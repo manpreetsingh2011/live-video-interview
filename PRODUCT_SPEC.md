@@ -126,90 +126,53 @@ Additional constraints:
 
 **FR-06 [P0]: Current & Planned Question Types**
 
-| Type | MVP? | Workspace | Recording Format |
-|------|------|-----------|-----------------|
-| **Whiteboard (Basic)** — simple diagramming | ✅ MVP | Rectangles, circles, diamonds, arrows, and text labels on a fabric.js canvas. Color picker (fill + stroke), undo/redo, zoom/pan, export as PNG. Minimal and clean. | All shape add/move/delete/edit events + full state snapshot every 60s |
-| | | ⚠️ *Future: Consider replacing with tldraw for richer shape system and built-in CRDT sync* | |
-| **Whiteboard (Diagrams)** — smart connector diagrams | ✅ MVP | Shape libraries (cloud, DB, server, etc.), smart connector routing with edge routing, layers, grouping, and grid snapping on a maxGraph (mxGraph) canvas — the engine behind draw.io. Same drawing tools as Basic plus professional diagramming features. | All shape/connector add/move/delete/route events + layer/group changes + full state snapshot every 60s |
-| | | ⚠️ *Future: Consider replacing with tldraw for unified whiteboard engine, or React Flow for structured node-graph diagrams* | |
-| **Whiteboard (Excalidraw)** — hand-drawn / freeform | ✅ MVP | Hand-drawn freeform strokes, freehand arrows, and text on an Excalidraw canvas. Sketch-like aesthetic. Color picker, undo/redo, zoom/pan, export as PNG. | All stroke start/move/end events + text add/edit + full state snapshot every 60s |
-| **Coding** (code editor) | Future | In-browser code editor with syntax highlighting | Code change events (insert/delete/replace by position) + full source text snapshot every 60s |
-| **MCQ / Quiz** | Future | Question + multiple choice options | Answer selection events + timer events |
-| **Document / Text** | Future | Rich text / markdown editor | Text insert/delete events + full document snapshot every 60s |
+| Type | MVP? | Workspace | Key Features | Recording Format |
+|------|------|-----------|--------------|-----------------|
+| **Whiteboard (Basic)** — simple diagramming | ✅ MVP | Fabric.js canvas (shapes, arrows, text) | Rectangles, circles, diamonds, simple arrows, text labels. Color picker (fill + stroke), undo/redo, zoom/pan, export as PNG. Minimal and clean. | All shape add/move/delete/edit events + full state snapshot every 60s |
+| | | ⚠️ *Future: Consider replacing with tldraw* | | |
+| **Whiteboard (Diagrams)** — smart connector diagrams | ✅ MVP | maxGraph (mxGraph) canvas — the engine behind draw.io | Shape libraries (cloud, DB, server, etc.), smart connector routing, layers & grouping, grid snapping. Same drawing tools as Basic plus professional diagramming features. | All shape/connector add/move/delete/route events + layer/group changes + full state snapshot every 60s |
+| | | ⚠️ *Future: Consider replacing with tldraw or React Flow* | | |
+| **Whiteboard (Excalidraw)** — hand-drawn / freeform | ✅ MVP | Excalidraw canvas (hand-drawn strokes, freehand) | Hand-drawn freeform strokes, freehand arrows, text labels. Freehand drawing only. Color picker, undo/redo, zoom/pan, export as PNG. Sketch-like aesthetic. | All stroke start/move/end events + text add/edit + full state snapshot every 60s |
+| **Coding** (code editor) | Future | In-browser code editor (Monaco / CodeMirror) | Syntax highlighting, language support TBD | Code change events (insert/delete/replace by position) + full source text snapshot every 60s |
+| **MCQ / Quiz** | Future | Custom React components | Multiple choice, timer | Answer selection events + timer events |
+| **Document / Text** | Future | Rich text / markdown editor | Text formatting | Text insert/delete events + full document snapshot every 60s | |
 
-### 5.3 Collaborative Whiteboard
+### 5.3 Live Video/Audio
 
-**FR-07 [P0]: Whiteboard Engine**
-- Full-screen canvas filling most of the viewport
-- Real-time sync via CRDT (Conflict-free Replicated Data Type)
-- Every action (add shape, move, delete, edit text) broadcasts to the other participant instantly
-- Late-joining participant receives full whiteboard state on entry
-
-**FR-08 [P0]: Whiteboard Modes**
-
-| Feature | Basic | Diagrams | Excalidraw |
-|---------|-------|-----------|------------|
-| Rectangles, circles, diamonds | ✅ | ✅ | ✅ (freehand) |
-| Arrows & connectors | Simple | Smart connectors with routing (draw.io style) | Freehand arrows |
-| Text labels | ✅ | ✅ | ✅ |
-| Freehand drawing | ❌ | ❌ | ✅ |
-| Shape libraries (cloud, DB, etc.) | ❌ | ✅ | ❌ |
-| Layers & grouping | ❌ | ✅ | ❌ |
-| Grid snapping | ❌ | ✅ | ❌ |
-| Color picker | ✅ | ✅ | ✅ |
-| Undo/redo | ✅ | ✅ | ✅ |
-| Zoom & pan | ✅ | ✅ | ✅ |
-| Export as PNG | ✅ | ✅ | ✅ |
-
-**FR-09 [P0]: Whiteboard Toolbar**
-- Shape selection (rectangle, circle, diamond, arrow, text)
-- Pointer / select tool
-- Delete tool
-- Color picker (fill + stroke)
-- Undo / Redo buttons
-- Clear canvas
-- Export as image
-- Zoom controls (zoom in, zoom out, fit to screen)
-
-**FR-10 [P0]: Real-Time Sync**
-- Uses WebSocket-based CRDT (e.g., Y.js with y-websocket provider)
-- Changes propagate within <100ms
-- Each participant sees the other's cursor position (optional)
-- Conflict resolution: CRDT ensures both reach the same state regardless of operation order
-
-### 5.4 Live Video/Audio
-
-**FR-11 [P0]: Peer-to-Peer WebRTC**
+**FR-07 [P0]: Peer-to-Peer WebRTC**
 - Direct P2P connection using standard WebRTC
 - STUN servers for NAT traversal
 - TURN server support configurable for future addition
 
-**FR-12 [P0]: Video Layout**
-- Two video tiles overlaid on the whiteboard or positioned in a corner
-- Self-view: small tile (bottom-right)
-- Remote participant: medium tile (top-right or bottom-left)
-- Tiles are draggable (optional)
+**FR-08 [P0]: Video Layout**
+- Two video tiles positioned on the right side of the workspace by default
+- Self-view: small tile
+- Remote participant: larger tile above self-view
+- Tiles are draggable — users can reposition them anywhere on screen
 - When camera is off: show name/initials placeholder
 
-**FR-13 [P0]: Media Controls**
+**FR-09 [P0]: Media Controls**
 - Camera toggle
 - Microphone toggle
 - Mute indicator
-- End call button (interviewer: ends for both; candidate: leaves only themselves)
+- End call button (interviewer: ends for both and auto-stops recording; candidate: leaves only themselves)
 
-### 5.5 Text Chat
+### 5.4 Text Chat
 
-**FR-14 [P1]: In-Call Chat**
+**FR-10 [P1]: In-Call Chat**
 - Toggleable chat sidebar
-- Real-time messaging via WebSocket
-- Ephemeral (not recorded in the official recording)
-- Notification badge when minimized and new message arrives
+- Any participant can send messages (interviewer or candidate)
+- Real-time messaging via Firebase
+- Chat history is preserved — late joiners see all previous messages
+- Messages are recorded in the workspace JSON with timestamps alongside whiteboard events
+- Chat replay is shown in the playback player, synchronized with video and workspace replay
+- Blinking animation on chat icon when new message arrives (sidebar minimized or closed)
 
-### 5.6 Recording (Dual Recording)
+### 5.5 Recording (Dual Recording)
 
 The recording system captures two synchronized data streams:
 
-**FR-15 [P0]: Video Recording**
+**FR-11 [P0]: Video Recording**
 - Uses browser `MediaRecorder` API
 - Captures: composed video stream (both participants' video tracks) + all audio tracks (both participants)
 - Does NOT capture the whiteboard canvas in the video (whiteboard is recorded separately)
@@ -218,7 +181,7 @@ The recording system captures two synchronized data streams:
 - Recording indicator shown to both participants
 - Interviewer can stop recording at any time
 
-**FR-16 [P0]: Workspace Recording (JSON)**
+**FR-12 [P0]: Workspace Recording (JSON)**
 - All question workspaces' actions logged as JSON events with timestamps in a single JSON file
 - Each event is tagged with its `questionId` so the player can route it to the correct replay component
 - Each question type defines its own event schema. Example:
@@ -271,6 +234,16 @@ The recording system captures two synchronized data streams:
       "questionId": "q2",
       "type": "add_cell",
       "data": { ... }
+    },
+    {
+      "timestamp": 15000.000,
+      "questionId": null,
+      "type": "chat_message",
+      "data": {
+        "senderName": "Alex",
+        "senderRole": "interviewer",
+        "text": "Can you explain your approach?"
+      }
     }
   ],
   "snapshots": [
@@ -291,16 +264,17 @@ The recording system captures two synchronized data streams:
 - Each question's snapshots captured every 60 seconds (independently per question)
 - Timestamps are relative to session start (millisecond precision)
 - Events logged only during recording (start/stop)
+- Chat messages are also recorded as events with `questionId: null` and `type: "chat_message"`, interleaved with workspace events by timestamp
 - The `questions` array maps question IDs to their types, so the player knows which replay component to use for each
 
-**FR-17 [P0]: Sync Mechanism**
+**FR-13 [P0]: Sync Mechanism**
 - Both recordings share the same time origin (`performance.now()` at session start)
 - Frame-level sync achieved by matching event timestamps to video timecodes
 - When the video shows time `T`, the player applies all whiteboard events up to `T`
 
-### 5.7 Playback
+### 5.6 Playback
 
-**FR-18 [P0]: In-Browser Player**
+**FR-14 [P0]: In-Browser Player**
 - Custom player component for synchronized replay
 - Layout: Workspace replay on the left/center, video player on the right/bottom
 - Question tabs are shown above the workspace replay area, matching the interview's questions
@@ -322,27 +296,27 @@ The recording system captures two synchronized data streams:
 └────────────────────────────────────┘
 ```
 
-**FR-19 [P0]: Playback Controls**
+**FR-15 [P0]: Playback Controls**
 - Play / Pause (controls both video + diagram replay simultaneously)
 - Scrub bar for seeking
 - Time display (current / total)
 - Speed control (1x, 1.5x, 2x)
 - Skip forward/backward by 10 seconds
 
-**FR-20 [P1]: Seeking Behavior**
+**FR-16 [P1]: Seeking Behavior**
 - On seek, snapshots restore the workspace state to the nearest snapshot before the target time
 - Then events are fast-forwarded from the snapshot to the exact target time
 - This avoids replaying every event from the beginning
 
-**FR-21 [P0]: Playback Entry Points**
+**FR-17 [P0]: Playback Entry Points**
 - The playback page is a URL: `https://domain/playback?video={driveVideoId}&workspace={driveWorkspaceId}`
 - This URL can be shared with the hiring team
 - The page loads the video from a proxy or direct Drive URL and the workspace JSON from Drive
 - **Alternative**: A self-contained zip with player.html + video.webm + workspace.json
 
-### 5.8 Google Drive Integration
+### 5.7 Google Drive Integration
 
-**FR-22 [P0]: Upload Flow**
+**FR-18 [P0]: Upload Flow**
 - After session ends, prompt interviewer with "Upload to Google Drive"
 - Google OAuth consent screen (scopes: `https://www.googleapis.com/auth/drive.file`)
 - Creates or finds a folder named "Live Interview Recordings"
@@ -352,7 +326,7 @@ The recording system captures two synchronized data streams:
 - Shows upload progress bar
 - On completion: shows "Open in Drive" link + playback URL
 
-**FR-23: File Structure in Drive**
+**FR-19: File Structure in Drive**
 Files are organized in a single folder with the following naming convention:
 ```
 Live Interview Recordings/
@@ -362,22 +336,22 @@ Live Interview Recordings/
 └── interview-e5f6g7h8-2026-06-19.json
 ```
 
-**FR-24 [P0]: OAuth Implementation**
+**FR-20 [P0]: OAuth Implementation**
 - One-time OAuth flow (no session persistence since no accounts)
 - Token stored in memory only — user must re-auth if they refresh
 - Token used only for the upload operation
 - `drive.file` scope ensures only files created by the app are accessible
 
-### 5.9 Ad Integration
+### 5.8 Ad Integration
 
-**FR-25 [P1]: Banner Ads**
+**FR-21 [P1]: Banner Ads**
 - Non-intrusive banner during the call
 - Placement: narrow bottom bar (below controls, above canvas edge)
 - Ads rotate every 60 seconds
 - Ads NOT included in recording (not part of canvas or video capture)
 - Ad provider: TBD
 
-### 5.10 Error & Edge Cases
+### 5.9 Error & Edge Cases
 
 | Scenario | Expected Behavior |
 |----------|------------------|
