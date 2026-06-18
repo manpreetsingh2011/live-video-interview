@@ -402,397 +402,40 @@ Live Interview Recordings/
 
 ---
 
-## 6. Technical Architecture
+## 6. Technical Considerations
 
-### 6.1 High-Level Overview
+### Frontend
 
-```
-┌──────────────────────────────────────────────────────────────┐
-│                    Browser A (Interviewer)                    │
-│  ┌───────────────────────────────────────────────────────┐   │
-│  │  Next.js App                                         │   │
-│  │  ┌──────────────────┐  ┌──────────────────────┐      │   │
-│  │  │ Workspace Area   │  │ WebRTC (P2P)         │      │   │
-│  │  │ (question-type   │  │ RTCPeerConnection    │      │   │
-│  │  │  plugin)         │  │ MediaStream          │      │   │
-│  │  │ ┌─────────────┐  │  └──────────┬───────────┘      │   │
-│  │  │ │ Whiteboard  │  │             │                   │   │
-│  │  │ │ (Fabric.js /│  │             │                   │   │
-│  │  │ │  Excalidraw /│  │             │                   │   │
- │  │  │ │  draw.io)   │  │             │                   │   │
- │  │  │ └─────────────┘  │             │                   │   │
- │  │  │ (Basic)          │             │                   │   │
- │  │  │ (Diagrams)       │             │                   │   │
- │  │  │ (Excalidraw)     │             │                   │   │
- │  │  │ (future:         │             │                   │   │
- │  │  │  coding, MCQ)    │             │                   │   │
-│  │  └────────┬─────────┘             │                   │   │
-│  │           │                       │                   │   │
-│  │  ┌────────▼───────────────────────▼───────────┐       │   │
-│  │  │  Y.js CRDT (workspace sync)                │       │   │
-│  │  │  + WebSocket Client                        │       │   │
-│  │  └────────┬───────────────────────────────────┘       │   │
-│  │           │                                           │   │
-│  │  ┌────────▼──────────────────────┐                    │   │
-│  │  │  Recording Manager           │                    │   │
-│  │  │  - MediaRecorder (AV)        │                    │   │
-│  │  │  - Event Logger (JSON)       │                    │   │
-│  │  │  - Snapshot Taker            │                    │   │
-│  │  │  (delegates to question type │                    │   │
-│  │  │   for workspace state)       │                    │   │
-│  │  └────────┬─────────────────────┘                    │   │
-│  │           │                                          │   │
-│  │  ┌────────▼──────────────────────┐                   │   │
-│  │  │  Google Drive Uploader       │                   │   │
-│  │  │  (OAuth + Drive API)         │                   │   │
-│  │  └───────────────────────────────┘                   │   │
-│  └──────────────────────────────────────────────────────┘   │
-└──────────────────────────────┬──────────────────────────────┘
-                               │
-                  ┌────────────▼────────────┐
-                  │   Signaling Server      │
-                  │   (WebSocket)           │
-                  │   - Room management     │
-                  │   - WebRTC signaling    │
-                  │   - CRDT relay (yjs)    │
-                  │   - Chat relay          │
-                  └────────────┬────────────┘
-                               │
-┌──────────────────────────────▼──────────────────────────────┐
-│                    Browser B (Candidate)                     │
-│  ┌───────────────────────────────────────────────────────┐  │
-│  │  Same app, no recording/upload controls               │  │
-│  └───────────────────────────────────────────────────────┘  │
-└─────────────────────────────────────────────────────────────┘
-```
+- **Framework**: Next.js (App Router), TypeScript, Tailwind CSS
+- **Whiteboard engines**: Fabric.js (Basic), maxGraph/mxGraph (Diagrams), Excalidraw (freehand) — each a separate question type plugin
+- **Real-time sync**: CRDT via Y.js with Firestore provider (y-firestore); each question gets its own Y.Doc
+- **Video/audio**: Native RTCPeerConnection (P2P WebRTC) with STUN; TURN support configurable for future
+- **Recording**: MediaRecorder API for video (.webm); question-type-specific event logger for workspace (.json)
+- **State management**: Zustand or React context for call/room state
 
-### 6.2 Frontend (Next.js)
+### Backend / Real-Time Infrastructure
 
-| Layer | Technology |
-|-------|-----------|
-| Framework | Next.js 14+ (App Router), TypeScript |
-| Styling | Tailwind CSS |
-| State | Zustand or React context for call/room state |
-| Question Type Plugin System | Plugin registry + dynamic component loading |
-| Whiteboard Basic | Fabric.js |
-| Whiteboard Diagrams | draw.io / diagrams.net style |
-| Whiteboard Excalidraw | Excalidraw |
-| Future: Coding | Monaco Editor (CodeMirror) |
-| Future: MCQ | Custom React components |
-| CRDT Sync | Y.js + y-websocket provider |
-| WebRTC | Native `RTCPeerConnection` |
-| Recording | `MediaRecorder` API + question-type-specific event logger |
-| Google Drive | `gapi` client library / REST calls |
+- **Platform**: Firebase (Firestore) for room management, WebRTC signaling relay, Y.js CRDT relay, and chat relay
+- **No dedicated signaling server** — Firebase handles real-time sync and presence natively
+- **No persistent storage** beyond Firestore; rooms auto-destruct on inactivity
 
-### 6.3 Backend (Signaling Server)
+### Storage & Auth
 
-| Component | Technology |
-|-----------|-----------|
-| Runtime | Node.js |
-| Server | WebSocket (ws library or Socket.IO) |
-| CRDT relay | y-websocket |
-| Room state | In-memory Map |
+- **No server-side file storage** — recordings upload directly from browser to Google Drive
+- **Auth**: Google OAuth 2.0 PKCE (drive.file scope); token stored in memory only
+- **Playback files** hosted on Google Drive; accessed via proxy URL
 
-**Server Responsibilities:**
-- Room creation and lifecycle
-- WebRTC signaling relay (offer/answer/ICE candidates)
-- Y.js CRDT document synchronization
-- Chat message relay
-- No persistent storage — everything ephemeral
+### Plugin Architecture
 
-### 6.4 Question Type Plugin Architecture
+- Each question type is a self-contained plugin defining: workspace UI, CRDT data model, recording event schema, and replay component
+- Core platform handles WebRTC, recording coordination, Drive upload, and ads (room lifecycle via Firebase)
 
-Each question type is a self-contained plugin:
+### Deployment
 
-```typescript
-interface QuestionTypePlugin {
-  id: string                    // 'whiteboard' | 'coding' | 'mcq' | ...
-  label: string                 // Display name
-  icon: ReactNode               // Icon for picker
-  
-  // Workspace component (rendered in the main area, one per question tab)
-  Workspace: React.ComponentType<{
-    questionId: string
-    questionLabel: string
-    role: 'interviewer' | 'candidate'
-    yDoc: Y.Doc
-    recording?: RecordingController
-  }>
-  
-  // Replay component (rendered in playback)
-  Replay: React.ComponentType<{
-    events: Event[]
-    snapshots: Snapshot[]
-    currentTime: number
-    isPlaying: boolean
-  }>
-  
-  // Serialization
-  serializeState(yDoc: Y.Doc): object
-  deserializeState(data: object): void
-  
-  // Recording
-  getEventSchema(): EventSchema
-  captureSnapshot(yDoc: Y.Doc): object
-}
-```
+- **Frontend**: Vercel (or Firebase Hosting)
+- **Backend**: Firebase (Firestore, no dedicated server)
 
-The core platform manages room lifecycle, WebRTC, recording coordination, Drive upload, and ads. Each question type provides its own workspace UI, sync model (via shared Y.Doc), recording event format, and replay component.
-
-### 6.5 MVP Question Types: Whiteboard (Basic / Diagrams / Excalidraw)
-
-Each is a separate question type plugin sharing a canvas metaphor but with different engines:
-
-| Type | Library | Shape Model | Key Events | Unique To |
-|------|---------|-------------|------------|-----------|
-| **Basic** | Fabric.js | Simple rect, circle, arrow, text | addShape, move, delete, editText | Minimal, clean |
-| **Diagrams** | draw.io / diagrams.net | Smart shapes, routing, layers, groups | addShape, connect, route, group, layer | Connector routing, shape libraries |
-| **Excalidraw** | Excalidraw | Hand-drawn strokes, freehand paths | strokeStart, strokeMove, strokeEnd, addText | Freehand drawing, sketch feel |
-
-**Separate CRDT Data Models (Y.js docs are namespaced by question type):**
-
-```typescript
-// Whiteboard Basic
-Y.Doc {
-  questionType: 'whiteboard-basic',
-  shapes: Y.Map<BasicShape>
-  // { id, type: 'rect'|'circle'|'arrow'|'text', x, y, w, h, fill, stroke, text }
-}
-
-// Whiteboard Diagrams
-Y.Doc {
-  questionType: 'whiteboard-diagrams',
-  cells: Y.Map<Cell>     // mxGraph cells
-  // cells with connection IDs, routing points, layers
-}
-
-// Whiteboard Excalidraw
-Y.Doc {
-  questionType: 'whiteboard-excalidraw',
-  elements: Y.Map<ExcalidrawElement>
-  // Excalidraw's native element format (strokes, text, images)
-}
-```
-
-- Each is fully independent — different event schemas, rendering engines, serialization
-- Core platform only knows about the plugin interface, not the internals
-- New question types (coding, MCQ) follow the same pattern
-
-### 6.6 Recording Architecture
-
-The Recording Manager is question-agnostic. It captures events from all question workspaces and tags them with the originating question ID.
-
-**During session:**
-
-```
-RecordingManager {
-  questions: Question[]
-
-  start() {
-    this.startTime = performance.now()
-    
-    // Start video recording (always the same regardless of questions)
-    this.videoRecorder = new MediaRecorder(composedStream)
-    this.videoChunks = []
-    this.videoRecorder.ondataavailable = e => this.videoChunks.push(e.data)
-    this.videoRecorder.start()
-    
-    // Start workspace event capture (subscribes to ALL question workspaces)
-    this.events = []
-    this.questions.forEach(question => {
-      question.onAction(action => {
-        this.events.push({
-          timestamp: performance.now() - this.startTime,
-          questionId: question.id,
-          type: action.type,
-          data: action.data
-        })
-      })
-    })
-    
-    // Start snapshot timers (per question, each serializes its own state)
-    this.snapshotIntervals = this.questions.map(question => {
-      return setInterval(() => {
-        this.snapshots.push({
-          timestamp: performance.now() - this.startTime,
-          questionId: question.id,
-          state: question.plugin.serializeState(question.yDoc)
-        })
-      }, 60000)
-    })
-  }
-  
-  stop() {
-    this.videoRecorder.stop()
-    this.snapshotIntervals.forEach(clearInterval)
-    
-    // Build recording package
-    return {
-      video: new Blob(this.videoChunks, { type: 'video/webm' }),
-      questions: this.questions.map(q => ({ id: q.id, type: q.type, label: q.label })),
-      workspace: {
-        events: this.events,
-        snapshots: this.snapshots,
-        sessionDuration: performance.now() - this.startTime
-      }
-    }
-  }
-}
-```
-
-**After session:**
-
-```
-1. RecordingManager returns { videoBlob, questions[], workspace }
-2. Prompt user: Download or Upload to Google Drive
-3. If Download: 
-   - Save video as .webm
-   - Save workspace JSON (includes questions array) with download attribute
-4. If Upload to Drive:
-   - Google OAuth flow (if not already authed)
-   - Upload video file to Drive
-   - Upload workspace JSON to Drive
-   - Show playback URL: /playback?video={id}&workspace={id}
-```
-
-### 6.7 Playback Architecture
-
-The Playback Player is question-agnostic. It renders the appropriate replay component per question, switching between them via tabs or a timeline view.
-
-**Player Component:**
-
-```
-PlaybackPlayer {
-  videoFile: Blob or URL,
-  workspaceData: { questions[], events, snapshots }
-  
-  // State
-  currentTime: number
-  isPlaying: boolean
-  activeQuestionId: string
-  
-  play() {
-    video.play()
-    animationFrame = requestAnimationFrame(updateWorkspace)
-  }
-  
-  pause() {
-    video.pause()
-    cancelAnimationFrame(animationFrame)
-  }
-  
-  seek(time) {
-    video.currentTime = time / 1000
-    currentTime = time
-  }
-  
-  updateWorkspace() {
-    if (isPlaying) {
-      now = video.currentTime * 1000
-      // Filter events for the active question and apply
-      questionEvents = workspaceData.events.filter(e => e.questionId === activeQuestionId)
-      replayComponent.applyEventsBetween(currentTime, now, { events: questionEvents, snapshots })
-      currentTime = now
-      animationFrame = requestAnimationFrame(updateWorkspace)
-    }
-  }
-  
-  switchQuestion(questionId) {
-    activeQuestionId = questionId
-    // Rebuild workspace state at current time for the selected question
-    questionSnapshots = workspaceData.snapshots.filter(s => s.questionId === questionId)
-    questionEvents = workspaceData.events.filter(e => e.questionId === questionId)
-    replayComponent = questionTypeRegistry.get(questionTypeMap[questionId]).Replay
-    replayComponent.seek(currentTime, { events: questionEvents, snapshots: questionSnapshots })
-  }
-}
-```
-
-- Playback shows question tabs matching the original interview, allowing reviewers to switch between questions while the video plays continuously
-- When switching tabs during playback, the workspace replay seeks to the corresponding time for that question
-
-### 6.8 Deployment
-
-| Component | Hosting |
-|-----------|---------|
-| Next.js frontend | Vercel (free tier) |
-| WebSocket signaling server | Railway / Fly.io / Render |
-| File storage (during upload) | None (direct browser-to-Drive) |
-| TURN server (future) | Twilio / self-hosted coturn |
-| Analytics | Plausible or PostHog |
-
----
-
-## 7. Data Model (In-Memory)
-
-```typescript
-interface Room {
-  id: string                    // UUID
-  questions: Question[]         // ordered list of questions (add-only)
-  createdAt: Date
-  participants: Participant[]
-  chatMessages: ChatMessage[]
-  createdBy: string             // persistent client ID of creator (not socket ID — survives reconnects)
-}
-
-interface Question {
-  id: string                    // unique ID per question (e.g., 'q1', 'q2')
-  type: string                  // 'whiteboard-basic' | 'whiteboard-diagrams' | 'whiteboard-excalidraw' | 'coding' | ...
-  label: string                 // display name / title for the question tab
-  yDoc: Y.Doc                   // separate Y.Doc per question for CRDT sync
-}
-
-interface Participant {
-  socketId: string
-  role: 'interviewer' | 'candidate'
-  joinedAt: Date
-  videoEnabled: boolean
-  audioEnabled: boolean
-  name?: string                 // optional display name
-}
-
-interface ChatMessage {
-  senderId: string
-  text: string
-  timestamp: Date
-}
-```
-
-No persistent database — everything in server memory. Room auto-destructs when all participants leave or after inactivity timeout.
-
----
-
-## 8. Google Drive API Integration
-
-**Auth Flow:**
-1. User clicks "Upload to Google Drive"
-2. Google OAuth 2.0 authorization code flow with PKCE (via `gapi` client library)
-3. Scope: `https://www.googleapis.com/auth/drive.file`
-4. Token stored in JavaScript memory only
-
-**Upload Flow:**
-```
-1. GET /drive/v3/files?q=name='Live Interview Recordings' and mimeType='application/vnd.google-apps.folder'
-2. If not found: POST /drive/v3/files (create folder)
-3. POST /drive/v3/files (upload .webm, parent=recordingFolderId)
-4. POST /drive/v3/files (upload .json, parent=recordingFolderId)
-5. Return file IDs and webViewLinks
-```
-
-**File Metadata:**
-```json
-{
-  "name": "interview-a1b2c3d4-2026-06-18.webm",
-  "mimeType": "video/webm",
-  "parents": ["recordingFolderId"],
-  "description": "Recorded on LiveInterviewPlatform. 
-                  Diagram playback: interview-a1b2c3d4-2026-06-18.json"
-}
-```
-
----
-
-## 9. Playback URL & Sharing
+## 7. Playback URL & Sharing
 
 **Format:**
 ```
@@ -811,7 +454,7 @@ https://domain/playback?video={driveVideoId}&workspace={driveWorkspaceId}
 
 ---
 
-## 10. Monetization
+## 8. Monetization
 
 | Feature | Free (ad-supported) | Premium (future) |
 |---------|-------------------|-------------------|
@@ -830,7 +473,7 @@ https://domain/playback?video={driveVideoId}&workspace={driveWorkspaceId}
 
 ---
 
-## 11. Roadmap
+## 9. Roadmap
 
 | Phase | Features | Status |
 |-------|----------|--------|
@@ -841,7 +484,7 @@ https://domain/playback?video={driveVideoId}&workspace={driveWorkspaceId}
 
 ---
 
-## 12. Success Metrics
+## 10. Success Metrics
 
 | Metric | Target |
 |--------|--------|
@@ -857,7 +500,7 @@ https://domain/playback?video={driveVideoId}&workspace={driveWorkspaceId}
 
 ---
 
-## 13. Open Questions
+## 11. Open Questions
 
 - [ ] Ad provider / network selection
 - [ ] Google Drive API quota handling
@@ -872,7 +515,7 @@ https://domain/playback?video={driveVideoId}&workspace={driveWorkspaceId}
 
 ---
 
-## 14. Competitor Landscape
+## 12. Competitor Landscape
 
 | Tool | Free? | Question Types? | Workspace + Video Sync? | Drive Upload? |
 |------|-------|-----------------|--------------------------|---------------|
