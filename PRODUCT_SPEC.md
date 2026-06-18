@@ -10,7 +10,7 @@
 - **What:** A free, ad-supported, web-based live interviewing platform with pluggable question types.
 - **No accounts required:** Both participants join via a link — zero sign-up friction.
 - **Core experience:** Real-time collaborative workspace (whiteboard, coding, etc.) + video/audio side by side.
-- **MVP question types:** Whiteboard (Basic), Whiteboard (Flowchart), Whiteboard (Sketch) — each a separate, independent type.
+- **MVP question types:** Whiteboard (Basic), Whiteboard (Diagrams), Whiteboard (Excalidraw) — each a separate, independent type.
 - **Dual recording:** Video (participants + audio) + JSON (workspace interaction log with periodic snapshots), recorded in sync.
 - **Google Drive:** Both recordings upload to the interviewer's Drive — no proprietary storage.
 - **Synchronized playback:** Custom in-browser player replays video and workspace replay together, letting reviewers see *how* a candidate reasoned step by step.
@@ -72,80 +72,85 @@ Additional constraints:
 
 ---
 
----
-
 ## 5. Functional Requirements
 
-### 6.1 Room Creation & Joining
+### 5.1 Room Creation & Joining
 
 **FR-01 [P0]: Landing Page**
-- Minimal landing page: "Create Interview Room" CTA + "Join Room" input (room code/link)
+- Two actions: "Create Interview Room" button and "Join Room" input (paste full link)
 - No marketing fluff — get to the room fast
 
 **FR-02 [P0]: Room Creation**
-- Interviewer clicks "Create Interview Room"
-- Question type picker appears with three MVP options:
-  1. **Whiteboard (Basic)** — boxes, circles, arrows, text (Fabric.js)
-  2. **Whiteboard (Flowchart)** — smart connectors, shape libraries, layers (MxGraph)
-  3. **Whiteboard (Sketch)** — hand-drawn feel, freehand strokes (Rough.js/Excalidraw)
-- Each is a separate, independent question type with its own rendering engine, event model, and data format
-- Room is created with a unique 8-character room code
-- Interviewer enters the room immediately
+- Click "Create Interview Room"
+- Room is created with a unique ID
+- Shareable link is generated: `https://domain/room/{roomId}`
+- Creator sees the link on screen to copy and share with participants
+- Creator can also join via the link like anyone else
 
-**FR-03 [P0]: Share Link**
-- Room URL: `https://domain/room/{roomCode}`
-- Copy link to clipboard button
-- Room code displayed for verbal sharing (e.g., "join at domain.com, code: abc-defg")
-
-**FR-04 [P0]: Joining**
-- Candidate opens link → sees room info + "Join Interview" button
+**FR-03 [P0]: Joining**
+- Open link → "Join Interview" button
+- Enter display name (optional, max 128 characters)
+- Pick a role: **Interviewer** or **Candidate**
 - No account, no sign-up
+- No validation for interviewer role — anyone can pick it
+- Multiple interviewers and multiple candidates can coexist in the same room (recommended use is 1:1)
 - Browser prompts for camera/mic permissions
-- Enters room — sees whiteboard + video tiles
+- Enter room — see workspace area + video tiles
+- Name and role shown in participant list
 
-**FR-05 [P1]: Room State & Presence**
-- Both participants enter independently
+**FR-04 [P1]: Room State & Presence**
+- Interviewer capabilities: start/stop recording, end session, upload to Drive
+- Candidate capabilities: draw on whiteboard, control own camera/mic, use chat, leave room (self only)
 - Each controls their own camera/mic activation
-- UI shows: participant joined | participant left | participant camera/mic status
+- UI shows: participant joined | participant left | participant role and camera/mic status
 - Room is active until both participants leave or interviewer ends the session
+- If no questions have been added, the workspace area is empty with a prompt to "Add question"; video tiles remain active so participants can discuss
 
-### 6.2 Question Type System
+### 5.2 Question Type System
 
-**FR-06 [P0]: Pluggable Question Type Architecture**
-- The workspace area renders a question-type-specific component
+**FR-05 [P0]: Pluggable Question Type Architecture**
+- The workspace area supports multiple questions, each in its own tab
+- Each question has its own question type and independent workspace state
+- Only interviewers can add questions
+- A persistent "+" button at the end of the tab bar opens a picker to select a question type
+- Multiple questions of the same type can be added (e.g., two Whiteboard (Basic) tabs)
+- When a new question is added, the workspace auto-switches to the new tab
 - Each question type defines:
   - A workspace UI component
   - A data model for its state (serializable)
   - A recording format (event log schema)
   - A replay component for playback
-- Question types are selected at room creation (by the interviewer)
+- Questions are add-only (no reorder or delete)
+- When switching between tabs, the workspace state for that question is preserved
 - Future question types can be added without modifying core platform code
 
-**FR-07 [P0]: Current & Planned Question Types**
+**FR-06 [P0]: Current & Planned Question Types**
 
 | Type | MVP? | Workspace | Recording Format |
 |------|------|-----------|-----------------|
-| **Whiteboard (Basic)** — simple diagramming | ✅ MVP | Fabric.js canvas (shapes, arrows, text) | Shape events + snapshots |
-| **Whiteboard (Flowchart)** — smart connector diagrams | ✅ MVP | MxGraph canvas (shape libs, layers, routing) | Shape+connector events + snapshots |
-| **Whiteboard (Sketch)** — hand-drawn / freeform | ✅ MVP | Rough.js / Excalidraw canvas (hand-drawn strokes, freehand) | Stroke events + snapshots |
-| **Coding** (code editor) | Future | In-browser code editor with syntax highlighting | Code edit events + snapshots |
-| **MCQ / Quiz** | Future | Question + multiple choice options | Answer selections + timer |
-| **Document / Text** | Future | Rich text / markdown editor | Text edit events + snapshots |
+| **Whiteboard (Basic)** — simple diagramming | ✅ MVP | Rectangles, circles, diamonds, arrows, and text labels on a fabric.js canvas. Color picker (fill + stroke), undo/redo, zoom/pan, export as PNG. Minimal and clean. | All shape add/move/delete/edit events + full state snapshot every 60s |
+| | | ⚠️ *Future: Consider replacing with tldraw for richer shape system and built-in CRDT sync* | |
+| **Whiteboard (Diagrams)** — smart connector diagrams | ✅ MVP | Shape libraries (cloud, DB, server, etc.), smart connector routing with edge routing, layers, grouping, and grid snapping on a maxGraph (mxGraph) canvas — the engine behind draw.io. Same drawing tools as Basic plus professional diagramming features. | All shape/connector add/move/delete/route events + layer/group changes + full state snapshot every 60s |
+| | | ⚠️ *Future: Consider replacing with tldraw for unified whiteboard engine, or React Flow for structured node-graph diagrams* | |
+| **Whiteboard (Excalidraw)** — hand-drawn / freeform | ✅ MVP | Hand-drawn freeform strokes, freehand arrows, and text on an Excalidraw canvas. Sketch-like aesthetic. Color picker, undo/redo, zoom/pan, export as PNG. | All stroke start/move/end events + text add/edit + full state snapshot every 60s |
+| **Coding** (code editor) | Future | In-browser code editor with syntax highlighting | Code change events (insert/delete/replace by position) + full source text snapshot every 60s |
+| **MCQ / Quiz** | Future | Question + multiple choice options | Answer selection events + timer events |
+| **Document / Text** | Future | Rich text / markdown editor | Text insert/delete events + full document snapshot every 60s |
 
-### 6.3 Collaborative Whiteboard
+### 5.3 Collaborative Whiteboard
 
-**FR-08 [P0]: Whiteboard Engine**
+**FR-07 [P0]: Whiteboard Engine**
 - Full-screen canvas filling most of the viewport
 - Real-time sync via CRDT (Conflict-free Replicated Data Type)
 - Every action (add shape, move, delete, edit text) broadcasts to the other participant instantly
 - Late-joining participant receives full whiteboard state on entry
 
-**FR-09 [P0]: Whiteboard Modes**
+**FR-08 [P0]: Whiteboard Modes**
 
-| Feature | Basic | Flowchart | Hand-drawn |
+| Feature | Basic | Diagrams | Excalidraw |
 |---------|-------|-----------|------------|
-| Rectangles, circles, diamonds | ✅ | ✅ | ✅ (hand-drawn) |
-| Arrows & connectors | Simple | Smart connectors with routing | Hand-drawn arrows |
+| Rectangles, circles, diamonds | ✅ | ✅ | ✅ (freehand) |
+| Arrows & connectors | Simple | Smart connectors with routing (draw.io style) | Freehand arrows |
 | Text labels | ✅ | ✅ | ✅ |
 | Freehand drawing | ❌ | ❌ | ✅ |
 | Shape libraries (cloud, DB, etc.) | ❌ | ✅ | ❌ |
@@ -156,7 +161,7 @@ Additional constraints:
 | Zoom & pan | ✅ | ✅ | ✅ |
 | Export as PNG | ✅ | ✅ | ✅ |
 
-**FR-10 [P0]: Whiteboard Toolbar**
+**FR-09 [P0]: Whiteboard Toolbar**
 - Shape selection (rectangle, circle, diamond, arrow, text)
 - Pointer / select tool
 - Delete tool
@@ -166,63 +171,78 @@ Additional constraints:
 - Export as image
 - Zoom controls (zoom in, zoom out, fit to screen)
 
-**FR-11 [P0]: Real-Time Sync**
+**FR-10 [P0]: Real-Time Sync**
 - Uses WebSocket-based CRDT (e.g., Y.js with y-websocket provider)
 - Changes propagate within <100ms
 - Each participant sees the other's cursor position (optional)
 - Conflict resolution: CRDT ensures both reach the same state regardless of operation order
 
-### 6.4 Live Video/Audio
+### 5.4 Live Video/Audio
 
-**FR-12 [P0]: Peer-to-Peer WebRTC**
+**FR-11 [P0]: Peer-to-Peer WebRTC**
 - Direct P2P connection using standard WebRTC
 - STUN servers for NAT traversal
 - TURN server support configurable for future addition
 
-**FR-13 [P0]: Video Layout**
+**FR-12 [P0]: Video Layout**
 - Two video tiles overlaid on the whiteboard or positioned in a corner
 - Self-view: small tile (bottom-right)
 - Remote participant: medium tile (top-right or bottom-left)
 - Tiles are draggable (optional)
 - When camera is off: show name/initials placeholder
 
-**FR-14 [P0]: Media Controls**
+**FR-13 [P0]: Media Controls**
 - Camera toggle
 - Microphone toggle
 - Mute indicator
 - End call button (interviewer: ends for both; candidate: leaves only themselves)
 
-### 6.5 Text Chat
+### 5.5 Text Chat
 
-**FR-15 [P1]: In-Call Chat**
+**FR-14 [P1]: In-Call Chat**
 - Toggleable chat sidebar
 - Real-time messaging via WebSocket
 - Ephemeral (not recorded in the official recording)
 - Notification badge when minimized and new message arrives
 
-### 6.6 Recording (Dual Recording)
+### 5.6 Recording (Dual Recording)
 
 The recording system captures two synchronized data streams:
 
-**FR-16 [P0]: Video Recording**
+**FR-15 [P0]: Video Recording**
 - Uses browser `MediaRecorder` API
-- Captures: remote participant video track + all audio tracks (both participants)
+- Captures: composed video stream (both participants' video tracks) + all audio tracks (both participants)
 - Does NOT capture the whiteboard canvas in the video (whiteboard is recorded separately)
 - Format: `.webm` (VP8/Opus)
 - Triggered by interviewer's "Record" button
 - Recording indicator shown to both participants
 - Interviewer can stop recording at any time
 
-**FR-17 [P0]: Workspace Recording (JSON)**
-- The active question type's workspace actions logged as JSON events with timestamps.
-- Each question type defines its own event schema. Example (whiteboard):
+**FR-16 [P0]: Workspace Recording (JSON)**
+- All question workspaces' actions logged as JSON events with timestamps in a single JSON file
+- Each event is tagged with its `questionId` so the player can route it to the correct replay component
+- Each question type defines its own event schema. Example:
 
 ```json
 {
   "sessionStartTime": "2026-06-18T10:00:00Z",
+  "sessionDuration": 3600000,
+  "questions": [
+    {
+      "id": "q1",
+      "type": "whiteboard-basic",
+      "label": "System Design: API Gateway"
+    },
+    {
+      "id": "q2",
+      "type": "whiteboard-diagrams",
+      "label": "Database Schema"
+    }
+  ],
   "events": [
     {
       "timestamp": 1234.567,
+      "questionId": "q1",
       "type": "add_shape",
       "data": {
         "shapeType": "rectangle",
@@ -238,6 +258,7 @@ The recording system captures two synchronized data streams:
     },
     {
       "timestamp": 5678.901,
+      "questionId": "q1",
       "type": "move_shape",
       "data": {
         "id": "shape-1",
@@ -247,109 +268,116 @@ The recording system captures two synchronized data streams:
     },
     {
       "timestamp": 9123.456,
-      "type": "add_arrow",
+      "questionId": "q2",
+      "type": "add_cell",
       "data": { ... }
     }
   ],
   "snapshots": [
     {
       "timestamp": 5000,
-      "state": { ... }  // full serialized whiteboard state
+      "questionId": "q1",
+      "state": { ... }  // full serialized whiteboard-basic state
     },
     {
       "timestamp": 10000,
-      "state": { ... }
+      "questionId": "q2",
+      "state": { ... }  // full serialized whiteboard-diagrams state
     }
   ]
 }
 ```
 
-- Snapshots: Full workspace state serialized every 5 seconds
+- Each question's snapshots captured every 60 seconds (independently per question)
 - Timestamps are relative to session start (millisecond precision)
 - Events logged only during recording (start/stop)
-- The JSON includes a `questionType` field so the player knows which replay component to use
+- The `questions` array maps question IDs to their types, so the player knows which replay component to use for each
 
-**FR-18 [P0]: Sync Mechanism**
+**FR-17 [P0]: Sync Mechanism**
 - Both recordings share the same time origin (`performance.now()` at session start)
 - Frame-level sync achieved by matching event timestamps to video timecodes
 - When the video shows time `T`, the player applies all whiteboard events up to `T`
 
-### 6.7 Playback
+### 5.7 Playback
 
-**FR-19 [P0]: In-Browser Player**
+**FR-18 [P0]: In-Browser Player**
 - Custom player component for synchronized replay
 - Layout: Workspace replay on the left/center, video player on the right/bottom
-- The workspace side renders the replay component corresponding to the recorded `questionType`
-- Whiteboard replay renders the canvas with event replay; future types will render their own replay views
+- Question tabs are shown above the workspace replay area, matching the interview's questions
+- Switching tabs during playback rebuilds the workspace state at the current video time for that question
+- Each question renders the replay component corresponding to its recorded type
 
 ```
-┌─────────────────────┬──────────────┐
-│                     │              │
-│   Workspace         │   Video      │
-│   Replay            │   Player     │
-│   (question-type    │   (WebM)     │
-│    specific)        │              │
-│                     │              │
-├─────────────────────┴──────────────┤
+┌──────────────────────┬──────────────┐
+│  [Q1] [Q2] [Q3]     │              │
+├──────────────────────┤   Video      │
+│                      │   Player     │
+│   Workspace          │   (WebM)     │
+│   Replay             │              │
+│   (per question      │              │
+│    type)             │              │
+│                      │              │
+├──────────────────────┴──────────────┤
 │  Play/Pause  │  Scrub Bar  │ Time  │
 └────────────────────────────────────┘
 ```
 
-**FR-20 [P0]: Playback Controls**
+**FR-19 [P0]: Playback Controls**
 - Play / Pause (controls both video + diagram replay simultaneously)
 - Scrub bar for seeking
 - Time display (current / total)
 - Speed control (1x, 1.5x, 2x)
 - Skip forward/backward by 10 seconds
 
-**FR-21 [P1]: Seeking Behavior**
+**FR-20 [P1]: Seeking Behavior**
 - On seek, snapshots restore the workspace state to the nearest snapshot before the target time
 - Then events are fast-forwarded from the snapshot to the exact target time
 - This avoids replaying every event from the beginning
 
-**FR-22 [P0]: Playback Entry Points**
-- The playback page is a URL: `https://domain/playback?video={driveFileId}&workspace={driveFileId}`
+**FR-21 [P0]: Playback Entry Points**
+- The playback page is a URL: `https://domain/playback?video={driveVideoId}&workspace={driveWorkspaceId}`
 - This URL can be shared with the hiring team
 - The page loads the video from a proxy or direct Drive URL and the workspace JSON from Drive
 - **Alternative**: A self-contained zip with player.html + video.webm + workspace.json
 
-### 6.8 Google Drive Integration
+### 5.8 Google Drive Integration
 
-**FR-23 [P0]: Upload Flow**
+**FR-22 [P0]: Upload Flow**
 - After session ends, prompt interviewer with "Upload to Google Drive"
 - Google OAuth consent screen (scopes: `https://www.googleapis.com/auth/drive.file`)
 - Creates or finds a folder named "Live Interview Recordings"
 - Uploads two files:
-  - `interview-{roomCode}-{date}.webm`
-  - `interview-{roomCode}-{date}.json`
+  - `interview-{roomId}-{date}.webm`
+  - `interview-{roomId}-{date}.json`
 - Shows upload progress bar
 - On completion: shows "Open in Drive" link + playback URL
 
-**FR-24 [P0]: File Structure in Drive**
+**FR-23: File Structure in Drive**
+Files are organized in a single folder with the following naming convention:
 ```
 Live Interview Recordings/
-├── interview-abc-defg-2026-06-18.webm
-├── interview-abc-defg-2026-06-18.json
-├── interview-hij-klmn-2026-06-19.webm
-└── interview-hij-klmn-2026-06-19.json
+├── interview-a1b2c3d4-2026-06-18.webm
+├── interview-a1b2c3d4-2026-06-18.json
+├── interview-e5f6g7h8-2026-06-19.webm
+└── interview-e5f6g7h8-2026-06-19.json
 ```
 
-**FR-25 [P0]: OAuth Implementation**
+**FR-24 [P0]: OAuth Implementation**
 - One-time OAuth flow (no session persistence since no accounts)
 - Token stored in memory only — user must re-auth if they refresh
 - Token used only for the upload operation
 - `drive.file` scope ensures only files created by the app are accessible
 
-### 6.9 Ad Integration
+### 5.9 Ad Integration
 
-**FR-26 [P1]: Banner Ads**
+**FR-25 [P1]: Banner Ads**
 - Non-intrusive banner during the call
 - Placement: narrow bottom bar (below controls, above canvas edge)
 - Ads rotate every 60 seconds
 - Ads NOT included in recording (not part of canvas or video capture)
 - Ad provider: TBD
 
-### 6.10 Error & Edge Cases
+### 5.10 Error & Edge Cases
 
 | Scenario | Expected Behavior |
 |----------|------------------|
@@ -365,12 +393,18 @@ Live Interview Recordings/
 | JSON recording file is corrupt | Use snapshots to reconstruct nearest valid state |
 | Room link visited after session ended | Show "Session has ended" message with CTA to create new room |
 | Interviewer closes browser mid-recording | Recording lost (in-memory). Warn on tab close. |
+| OAuth popup blocked by browser | Show instructions to allow pop-ups, offer manual fallback |
+| Room ID collision | Extremely unlikely with UUID. Collision check on creation; retry if collision |
+| Interviewer tab crashes (not close) mid-recording | Recording lost. Warn via `beforeunload` event |
+| Candidate's browser doesn't support VP8/Opus | Detect codec support via `MediaRecorder.isTypeSupported()`; fall back to default codec |
+| Auto-destruct timeout for empty rooms | Destroy room after 30 min of inactivity; warn participants before destruction |
+| Both participants click record simultaneously | Only the interviewer has the record button (candidate cannot trigger recording) |
 
 ---
 
 ## 6. Technical Architecture
 
-### 7.1 High-Level Overview
+### 6.1 High-Level Overview
 
 ```
 ┌──────────────────────────────────────────────────────────────┐
@@ -384,18 +418,14 @@ Live Interview Recordings/
 │  │  │ ┌─────────────┐  │  └──────────┬───────────┘      │   │
 │  │  │ │ Whiteboard  │  │             │                   │   │
 │  │  │ │ (Fabric.js /│  │             │                   │   │
-│  │  │ │  Rough.js / │  │             │                   │   │
-│  │  │ │  MxGraph)   │  │             │                   │   │
-│  │  │ └─────────────┘  │             │                   │   │
-│  │  │ │ Whiteboard     │             │                   │   │
-│  │ │ (Basic)        │             │                   │   │
-│  │ │ Whiteboard     │             │                   │   │
-│  │ │ (Flowchart)    │             │                   │   │
-│  │ │ Whiteboard     │             │                   │   │
-│  │ │ (Sketch)       │             │                   │   │
-│  │ │ (future:       │             │                   │   │
-│  │ │  coding, MCQ)  │             │                   │   │
-│  │  │  MCQ, etc.)      │             │                   │   │
+│  │  │ │  Excalidraw /│  │             │                   │   │
+ │  │  │ │  draw.io)   │  │             │                   │   │
+ │  │  │ └─────────────┘  │             │                   │   │
+ │  │  │ (Basic)          │             │                   │   │
+ │  │  │ (Diagrams)       │             │                   │   │
+ │  │  │ (Excalidraw)     │             │                   │   │
+ │  │  │ (future:         │             │                   │   │
+ │  │  │  coding, MCQ)    │             │                   │   │
 │  │  └────────┬─────────┘             │                   │   │
 │  │           │                       │                   │   │
 │  │  ┌────────▼───────────────────────▼───────────┐       │   │
@@ -436,7 +466,7 @@ Live Interview Recordings/
 └─────────────────────────────────────────────────────────────┘
 ```
 
-### 7.2 Frontend (Next.js)
+### 6.2 Frontend (Next.js)
 
 | Layer | Technology |
 |-------|-----------|
@@ -445,8 +475,8 @@ Live Interview Recordings/
 | State | Zustand or React context for call/room state |
 | Question Type Plugin System | Plugin registry + dynamic component loading |
 | Whiteboard Basic | Fabric.js |
-| Whiteboard Flowchart | MxGraph / Joint.js |
-| Whiteboard Sketch | Rough.js + Excalidraw |
+| Whiteboard Diagrams | draw.io / diagrams.net style |
+| Whiteboard Excalidraw | Excalidraw |
 | Future: Coding | Monaco Editor (CodeMirror) |
 | Future: MCQ | Custom React components |
 | CRDT Sync | Y.js + y-websocket provider |
@@ -454,7 +484,7 @@ Live Interview Recordings/
 | Recording | `MediaRecorder` API + question-type-specific event logger |
 | Google Drive | `gapi` client library / REST calls |
 
-### 7.3 Backend (Signaling Server)
+### 6.3 Backend (Signaling Server)
 
 | Component | Technology |
 |-----------|-----------|
@@ -470,7 +500,7 @@ Live Interview Recordings/
 - Chat message relay
 - No persistent storage — everything ephemeral
 
-### 7.4 Question Type Plugin Architecture
+### 6.4 Question Type Plugin Architecture
 
 Each question type is a self-contained plugin:
 
@@ -480,9 +510,10 @@ interface QuestionTypePlugin {
   label: string                 // Display name
   icon: ReactNode               // Icon for picker
   
-  // Workspace component (rendered in the main area)
+  // Workspace component (rendered in the main area, one per question tab)
   Workspace: React.ComponentType<{
-    roomId: string
+    questionId: string
+    questionLabel: string
     role: 'interviewer' | 'candidate'
     yDoc: Y.Doc
     recording?: RecordingController
@@ -508,15 +539,15 @@ interface QuestionTypePlugin {
 
 The core platform manages room lifecycle, WebRTC, recording coordination, Drive upload, and ads. Each question type provides its own workspace UI, sync model (via shared Y.Doc), recording event format, and replay component.
 
-### 7.5 MVP Question Types: Whiteboard (Basic / Flowchart / Sketch)
+### 6.5 MVP Question Types: Whiteboard (Basic / Diagrams / Excalidraw)
 
 Each is a separate question type plugin sharing a canvas metaphor but with different engines:
 
 | Type | Library | Shape Model | Key Events | Unique To |
 |------|---------|-------------|------------|-----------|
 | **Basic** | Fabric.js | Simple rect, circle, arrow, text | addShape, move, delete, editText | Minimal, clean |
-| **Flowchart** | MxGraph | Smart shapes, routing, layers, groups | addShape, connect, route, group, layer | Connector routing, shape libraries |
-| **Sketch** | Rough.js + Excalidraw | Hand-drawn strokes, freehand paths | strokeStart, strokeMove, strokeEnd, addText | Freehand drawing, sketch feel |
+| **Diagrams** | draw.io / diagrams.net | Smart shapes, routing, layers, groups | addShape, connect, route, group, layer | Connector routing, shape libraries |
+| **Excalidraw** | Excalidraw | Hand-drawn strokes, freehand paths | strokeStart, strokeMove, strokeEnd, addText | Freehand drawing, sketch feel |
 
 **Separate CRDT Data Models (Y.js docs are namespaced by question type):**
 
@@ -528,16 +559,16 @@ Y.Doc {
   // { id, type: 'rect'|'circle'|'arrow'|'text', x, y, w, h, fill, stroke, text }
 }
 
-// Whiteboard Flowchart
+// Whiteboard Diagrams
 Y.Doc {
-  questionType: 'whiteboard-flowchart',
+  questionType: 'whiteboard-diagrams',
   cells: Y.Map<Cell>     // mxGraph cells
   // cells with connection IDs, routing points, layers
 }
 
-// Whiteboard Sketch
+// Whiteboard Excalidraw
 Y.Doc {
-  questionType: 'whiteboard-sketch',
+  questionType: 'whiteboard-excalidraw',
   elements: Y.Map<ExcalidrawElement>
   // Excalidraw's native element format (strokes, text, images)
 }
@@ -547,52 +578,58 @@ Y.Doc {
 - Core platform only knows about the plugin interface, not the internals
 - New question types (coding, MCQ) follow the same pattern
 
-### 7.6 Recording Architecture
+### 6.6 Recording Architecture
 
-The Recording Manager is question-type-agnostic. It delegates workspace-related recording to the active question type plugin.
+The Recording Manager is question-agnostic. It captures events from all question workspaces and tags them with the originating question ID.
 
 **During session:**
 
 ```
 RecordingManager {
-  activeQuestionType: QuestionTypePlugin
+  questions: Question[]
 
   start() {
     this.startTime = performance.now()
     
-    // Start video recording (always the same regardless of question type)
+    // Start video recording (always the same regardless of questions)
     this.videoRecorder = new MediaRecorder(composedStream)
     this.videoChunks = []
     this.videoRecorder.ondataavailable = e => this.videoChunks.push(e.data)
     this.videoRecorder.start()
     
-    // Start workspace event capture (delegates to question type)
+    // Start workspace event capture (subscribes to ALL question workspaces)
     this.events = []
-    this.workspace.onAction(action => {
-      this.events.push({
-        timestamp: performance.now() - this.startTime,
-        type: action.type,
-        data: action.data
+    this.questions.forEach(question => {
+      question.onAction(action => {
+        this.events.push({
+          timestamp: performance.now() - this.startTime,
+          questionId: question.id,
+          type: action.type,
+          data: action.data
+        })
       })
     })
     
-    // Start snapshot timer (delegates serialization to question type)
-    this.snapshotInterval = setInterval(() => {
-      this.snapshots.push({
-        timestamp: performance.now() - this.startTime,
-        state: this.activeQuestionType.serializeState(this.yDoc)
-      })
-    }, 5000)
+    // Start snapshot timers (per question, each serializes its own state)
+    this.snapshotIntervals = this.questions.map(question => {
+      return setInterval(() => {
+        this.snapshots.push({
+          timestamp: performance.now() - this.startTime,
+          questionId: question.id,
+          state: question.plugin.serializeState(question.yDoc)
+        })
+      }, 60000)
+    })
   }
   
   stop() {
     this.videoRecorder.stop()
-    clearInterval(this.snapshotInterval)
+    this.snapshotIntervals.forEach(clearInterval)
     
     // Build recording package
     return {
       video: new Blob(this.videoChunks, { type: 'video/webm' }),
-      questionType: this.activeQuestionType.id,
+      questions: this.questions.map(q => ({ id: q.id, type: q.type, label: q.label })),
       workspace: {
         events: this.events,
         snapshots: this.snapshots,
@@ -606,11 +643,11 @@ RecordingManager {
 **After session:**
 
 ```
-1. RecordingManager returns { videoBlob, questionType, workspace }
+1. RecordingManager returns { videoBlob, questions[], workspace }
 2. Prompt user: Download or Upload to Google Drive
 3. If Download: 
    - Save video as .webm
-   - Save workspace JSON (includes questionType field) with download attribute
+   - Save workspace JSON (includes questions array) with download attribute
 4. If Upload to Drive:
    - Google OAuth flow (if not already authed)
    - Upload video file to Drive
@@ -618,24 +655,21 @@ RecordingManager {
    - Show playback URL: /playback?video={id}&workspace={id}
 ```
 
-### 7.7 Playback Architecture
+### 6.7 Playback Architecture
 
-The Playback Player is also question-type-agnostic. It renders the appropriate replay component based on the recorded `questionType`.
+The Playback Player is question-agnostic. It renders the appropriate replay component per question, switching between them via tabs or a timeline view.
 
 **Player Component:**
 
 ```
 PlaybackPlayer {
   videoFile: Blob or URL,
-  workspaceData: { questionType, events, snapshots }
-  replayComponent: ReplayPlugin
-  
-  // Resolve replay component from questionType
-  replayComponent = questionTypeRegistry.get(workspaceData.questionType).Replay
+  workspaceData: { questions[], events, snapshots }
   
   // State
   currentTime: number
   isPlaying: boolean
+  activeQuestionId: string
   
   play() {
     video.play()
@@ -649,23 +683,35 @@ PlaybackPlayer {
   
   seek(time) {
     video.currentTime = time / 1000
-    // Delegate to replay component
-    replayComponent.seek(time, workspaceData)
     currentTime = time
   }
   
   updateWorkspace() {
     if (isPlaying) {
       now = video.currentTime * 1000
-      replayComponent.applyEventsBetween(currentTime, now, workspaceData)
+      // Filter events for the active question and apply
+      questionEvents = workspaceData.events.filter(e => e.questionId === activeQuestionId)
+      replayComponent.applyEventsBetween(currentTime, now, { events: questionEvents, snapshots })
       currentTime = now
       animationFrame = requestAnimationFrame(updateWorkspace)
     }
   }
+  
+  switchQuestion(questionId) {
+    activeQuestionId = questionId
+    // Rebuild workspace state at current time for the selected question
+    questionSnapshots = workspaceData.snapshots.filter(s => s.questionId === questionId)
+    questionEvents = workspaceData.events.filter(e => e.questionId === questionId)
+    replayComponent = questionTypeRegistry.get(questionTypeMap[questionId]).Replay
+    replayComponent.seek(currentTime, { events: questionEvents, snapshots: questionSnapshots })
+  }
 }
 ```
 
-### 7.7 Deployment
+- Playback shows question tabs matching the original interview, allowing reviewers to switch between questions while the video plays continuously
+- When switching tabs during playback, the workspace replay seeks to the corresponding time for that question
+
+### 6.8 Deployment
 
 | Component | Hosting |
 |-----------|---------|
@@ -681,15 +727,19 @@ PlaybackPlayer {
 
 ```typescript
 interface Room {
-  id: string                    // 8-char room code
-  questionType: string          // 'whiteboard-basic' | 'whiteboard-flowchart' | 'whiteboard-sketch' | 'coding' | ...
+  id: string                    // UUID
+  questions: Question[]         // ordered list of questions (add-only)
   createdAt: Date
   participants: Participant[]
   chatMessages: ChatMessage[]
-  createdBy: string             // socket ID of creator
-  
-  // Y.js document for CRDT sync
-  yDoc: Y.Doc
+  createdBy: string             // persistent client ID of creator (not socket ID — survives reconnects)
+}
+
+interface Question {
+  id: string                    // unique ID per question (e.g., 'q1', 'q2')
+  type: string                  // 'whiteboard-basic' | 'whiteboard-diagrams' | 'whiteboard-excalidraw' | 'coding' | ...
+  label: string                 // display name / title for the question tab
+  yDoc: Y.Doc                   // separate Y.Doc per question for CRDT sync
 }
 
 interface Participant {
@@ -716,7 +766,7 @@ No persistent database — everything in server memory. Room auto-destructs when
 
 **Auth Flow:**
 1. User clicks "Upload to Google Drive"
-2. Google OAuth 2.0 implicit flow (client-side)
+2. Google OAuth 2.0 authorization code flow with PKCE (via `gapi` client library)
 3. Scope: `https://www.googleapis.com/auth/drive.file`
 4. Token stored in JavaScript memory only
 
@@ -732,11 +782,11 @@ No persistent database — everything in server memory. Room auto-destructs when
 **File Metadata:**
 ```json
 {
-  "name": "interview-abc-defg-2026-06-18.webm",
+  "name": "interview-a1b2c3d4-2026-06-18.webm",
   "mimeType": "video/webm",
   "parents": ["recordingFolderId"],
   "description": "Recorded on LiveInterviewPlatform. 
-                  Diagram playback: interview-abc-defg-2026-06-18.json"
+                  Diagram playback: interview-a1b2c3d4-2026-06-18.json"
 }
 ```
 
@@ -746,17 +796,12 @@ No persistent database — everything in server memory. Room auto-destructs when
 
 **Format:**
 ```
-https://domain/playback?id={sessionId}
+https://domain/playback?video={driveVideoId}&workspace={driveWorkspaceId}
 ```
 
 **How it works:**
-- `sessionId` is a random token generated at session end
-- The token maps to the Google Drive file IDs (stored in URL params or a short-lived mapping)
-- **Alternative approach**: The playback URL contains Drive file IDs directly:
-  ```
-  https://domain/playback?v={driveVideoId}&d={driveDiagramId}
-  ```
-- The page loads the video via Drive's export URL and diagram JSON via Drive's export
+- The playback URL contains Google Drive file IDs directly (no session token needed)
+- The page fetches video via a server-side proxy (to attach auth headers and bypass CORS) and workspace JSON via Drive API export
 - This URL can be shared with anyone (they'll need Google Drive access to the files)
 
 **Access Control:**
@@ -791,7 +836,7 @@ https://domain/playback?id={sessionId}
 |-------|----------|--------|
 | **MVP** | Room creation, question type picker (whiteboard only), P2P video/audio, collaborative whiteboard (all 3 modes), dual recording (A/V + workspace JSON), download recording, Google Drive upload, text chat, synchronized playback player, banner ads | Current focus |
 | **Phase 2** | Coding question type (in-browser code editor), playback seeking optimization, TURN server support, mobile browser polish | Next |
-| **Phase 3** | MCQ / quiz question type, scheduling / calendar, undo/redo improvements, cursor presence, whiteboard export | Future |
+| **Phase 3** | MCQ / quiz question type, scheduling / calendar, multi-level undo/redo, cursor presence, whiteboard export | Future |
 | **Phase 4** | More question types, panel interviews, ATS integrations, question templates, premium tier (no ads) | Future |
 
 ---
@@ -806,7 +851,7 @@ https://domain/playback?id={sessionId}
 | Recording start success rate | >95% |
 | Recording → Drive upload completion | >90% |
 | Playback load success rate | >95% |
-| Average session duration | >25 min (system design interviews) |
+| Completed interview rate (session >20 min) | >70% |
 | Candidate join rate | >85% |
 | Ad impressions per session | 3+ (sessions >5 min) |
 
@@ -815,8 +860,6 @@ https://domain/playback?id={sessionId}
 ## 13. Open Questions
 
 - [ ] Ad provider / network selection
-- [ ] Whiteboard library decision: build custom vs integrate existing (Excalidraw, draw.io, etc.)
-- [ ] CRDT library: Y.js vs Liveblocks vs custom
 - [ ] Google Drive API quota handling
 - [ ] Browser support for `MediaRecorder` with specific codecs
 - [ ] Playback: Drive file accessibility (CORS / proxy needed?)
