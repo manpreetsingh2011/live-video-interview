@@ -72,9 +72,40 @@ Additional constraints:
 
 ---
 
-## 5. Functional Requirements
+## 5. Initial Setup (Bring Your Own Accounts)
 
-### 5.1 Room Creation & Joining
+The platform does not manage its own infrastructure. Every customer brings their own accounts via OAuth:
+
+**Firebase (mandatory):**
+- Customer clicks "Connect Google Account" → Google OAuth consent screen
+- Scopes: Firebase Management API, Cloud Storage, Cloud Firestore
+- Platform lists the customer's Firebase projects and lets them select one
+- Once selected, the platform auto-configures Firestore, Firebase Realtime Database (for CRDT relay), and Firebase Storage, and applies security rules via API
+- The connected Firebase project handles: room state, CRDT relay, chat, recording metadata, and workspace JSON storage (paid tier)
+
+**Video provider (optional, mandatory for recording):**
+- Customer connects their preferred video provider via OAuth (e.g., Zoom, Google Meet SDK, Microsoft Teams)
+- Each provider is a self-contained plugin (same pattern as question types)
+- Recording is only available when a video provider is connected
+
+**Setup flow:**
+1. Customer signs up on the platform
+2. Platform presents a guided setup wizard: Firebase OAuth first, video provider OAuth optional
+3. On completion, platform validates the Firebase connection and lists available projects
+4. Customer selects which Firebase project to use
+5. Platform auto-configures the project (enables Firestore/Storage, applies rules)
+6. Customer selects and connects their video provider (e.g., Zoom); validates recording permissions
+7. Customer is ready to create interview rooms
+
+**Free vs Paid:**
+- Free tier: Firebase required, no video provider needed (P2P WebRTC, no recording)
+- Paid tier: Both Firebase and a video provider required (e.g., Zoom)
+
+---
+
+## 6. Functional Requirements
+
+### 6.1 Room Creation & Joining
 
 **FR-01 [P0]: Landing Page**
 - Two actions: "Create Interview Room" button and "Join Room" input (paste full link)
@@ -106,7 +137,7 @@ Additional constraints:
 - Room is active until both participants leave or interviewer ends the session
 - If no questions have been added, the workspace area is empty with a prompt to "Add question"; video tiles remain active so participants can discuss
 
-### 5.2 Question Type System
+### 6.2 Question Type System
 
 **FR-05 [P0]: Pluggable Question Type Architecture**
 - The workspace area supports multiple questions, each in its own tab
@@ -137,11 +168,12 @@ Additional constraints:
 | **MCQ / Quiz** | Future | Custom React components | Multiple choice, timer | Answer selection events + timer events |
 | **Document / Text** | Future | Rich text / markdown editor | Text formatting | Text insert/delete events + full document snapshot every 60s | |
 
-### 5.3 Live Video/Audio
+### 6.3 Live Video/Audio
 
-**FR-07 [P0]: Peer-to-Peer WebRTC**
-- Direct P2P connection using standard WebRTC
-- STUN servers for NAT traversal
+**FR-07 [P0]: Video/Audio**
+- Free tier: P2P WebRTC (direct browser-to-browser) with STUN servers
+- Paid tier: Pluggable video provider (e.g., Zoom SDK) via the user's own account — handles video/audio streaming, recording, and NAT traversal
+- Provider architecture follows the same plugin pattern as question types: each provider defines its own SDK integration, OAuth flow, and recording interface
 - TURN server support configurable for future addition
 
 **FR-08 [P0]: Video Layout**
@@ -155,9 +187,9 @@ Additional constraints:
 - Camera toggle
 - Microphone toggle
 - Mute indicator
-- End call button (interviewer: ends for both and auto-stops recording; candidate: leaves only themselves)
+- End call button (interviewer: ends for both and auto-stops recording if paid tier; candidate: leaves only themselves)
 
-### 5.4 Text Chat
+### 6.4 Text Chat
 
 **FR-10 [P1]: In-Call Chat**
 - Toggleable chat sidebar
@@ -168,132 +200,54 @@ Additional constraints:
 - Chat replay is shown in the playback player, synchronized with video and workspace replay
 - Blinking animation on chat icon when new message arrives (sidebar minimized or closed)
 
-### 5.5 Recording (Dual Recording)
+### 6.5 Recording (Dual Recording)
 
-The recording system captures two synchronized data streams:
+The recording system is only available on the paid tier. It captures two synchronized data streams plus chat messages interleaved in the workspace JSON:
 
-**FR-11 [P0]: Video Recording**
-- Uses browser `MediaRecorder` API
-- Captures: composed video stream (both participants' video tracks) + all audio tracks (both participants)
-- Does NOT capture the whiteboard canvas in the video (whiteboard is recorded separately)
-- Format: `.webm` (VP8/Opus)
-- Triggered by interviewer's "Record" button
+**FR-11 [P0]: Video Recording** (paid tier only)
+- Video/audio recording is handled server-side by the connected video provider (e.g., Zoom)
+- Triggered by interviewer's "Record" button (via the provider's recording API)
 - Recording indicator shown to both participants
 - Interviewer can stop recording at any time
 
-**FR-12 [P0]: Workspace Recording (JSON)**
-- All question workspaces' actions logged as JSON events with timestamps in a single JSON file
-- Each event is tagged with its `questionId` so the player can route it to the correct replay component
-- Each question type defines its own event schema. Example:
-
-```json
-{
-  "sessionStartTime": "2026-06-18T10:00:00Z",
-  "sessionDuration": 3600000,
-  "questions": [
-    {
-      "id": "q1",
-      "type": "whiteboard-basic",
-      "label": "System Design: API Gateway"
-    },
-    {
-      "id": "q2",
-      "type": "whiteboard-diagrams",
-      "label": "Database Schema"
-    }
-  ],
-  "events": [
-    {
-      "timestamp": 1234.567,
-      "questionId": "q1",
-      "type": "add_shape",
-      "data": {
-        "shapeType": "rectangle",
-        "id": "shape-1",
-        "x": 100,
-        "y": 200,
-        "width": 150,
-        "height": 80,
-        "fill": "#fff",
-        "stroke": "#000",
-        "text": "API Gateway"
-      }
-    },
-    {
-      "timestamp": 5678.901,
-      "questionId": "q1",
-      "type": "move_shape",
-      "data": {
-        "id": "shape-1",
-        "x": 150,
-        "y": 250
-      }
-    },
-    {
-      "timestamp": 9123.456,
-      "questionId": "q2",
-      "type": "add_cell",
-      "data": { ... }
-    },
-    {
-      "timestamp": 15000.000,
-      "questionId": null,
-      "type": "chat_message",
-      "data": {
-        "senderName": "Alex",
-        "senderRole": "interviewer",
-        "text": "Can you explain your approach?"
-      }
-    }
-  ],
-  "snapshots": [
-    {
-      "timestamp": 5000,
-      "questionId": "q1",
-      "state": { ... }  // full serialized whiteboard-basic state
-    },
-    {
-      "timestamp": 10000,
-      "questionId": "q2",
-      "state": { ... }  // full serialized whiteboard-diagrams state
-    }
-  ]
-}
-```
-
-- Each question's snapshots captured every 60 seconds (independently per question)
+**FR-12 [P0]: Workspace Recording (JSON)** (paid tier only)
+- All question workspace actions logged as JSON events with timestamps in a single file
+- Chat messages are interleaved in the same file by timestamp
+- Each event and snapshot is tagged with its `questionId` to map it to the correct question
 - Timestamps are relative to session start (millisecond precision)
-- Events logged only during recording (start/stop)
-- Chat messages are also recorded as events with `questionId: null` and `type: "chat_message"`, interleaved with workspace events by timestamp
-- The `questions` array maps question IDs to their types, so the player knows which replay component to use for each
+- Each question's full state snapshotted every 60 seconds for efficient seeking during playback
+- Automatically uploaded to the user's Firebase Storage after session ends
 
 **FR-13 [P0]: Sync Mechanism**
-- Both recordings share the same time origin (`performance.now()` at session start)
-- Frame-level sync achieved by matching event timestamps to video timecodes
-- When the video shows time `T`, the player applies all whiteboard events up to `T`
+- Both recordings share the same time origin
+- Frame-level sync achieved by matching workspace event timestamps to video timecodes from the provider's recording
+- When the video shows time `T`, the player applies all workspace events up to `T`
 
-### 5.6 Playback
+### 6.6 Playback
 
 **FR-14 [P0]: In-Browser Player**
 - Custom player component for synchronized replay
 - Layout: Workspace replay on the left/center, video player on the right/bottom
 - Question tabs are shown above the workspace replay area, matching the interview's questions
+- During recording, tab switches are tracked as events so the playback knows which question was active at any point
+- By default, playback auto-switches to the question the candidate was viewing at that moment
+- Reviewers can override — manually switching tabs pauses auto-follow for that question
 - Switching tabs during playback rebuilds the workspace state at the current video time for that question
 - Each question renders the replay component corresponding to its recorded type
 
 ```
 ┌──────────────────────┬──────────────┐
-│  [Q1] [Q2] [Q3]     │              │
+│  [Q1] [Q2] [Q3]      │              │
 ├──────────────────────┤   Video      │
 │                      │   Player     │
-│   Workspace          │   (WebM)     │
-│   Replay             │              │
+│   Workspace          │   (provider  │
+│   Replay             │   recording) │
 │   (per question      │              │
 │    type)             │              │
 │                      │              │
 ├──────────────────────┴──────────────┤
-│  Play/Pause  │  Scrub Bar  │ Time  │
-└────────────────────────────────────┘
+│  Play/Pause  │  Scrub Bar   │ Time  │
+└─────────────────────────────────────┘
 ```
 
 **FR-15 [P0]: Playback Controls**
@@ -308,41 +262,40 @@ The recording system captures two synchronized data streams:
 - Then events are fast-forwarded from the snapshot to the exact target time
 - This avoids replaying every event from the beginning
 
-**FR-17 [P0]: Playback Entry Points**
-- The playback page is a URL: `https://domain/playback?video={driveVideoId}&workspace={driveWorkspaceId}`
-- This URL can be shared with the hiring team
-- The page loads the video from a proxy or direct Drive URL and the workspace JSON from Drive
-- **Alternative**: A self-contained zip with player.html + video.webm + workspace.json
+**FR-17 [P0]: Playback Entry Points** (paid tier only)
+- **Direct playback URL**: `https://domain/playback?provider={providerRecordingId}&workspace={firebaseStoragePath}` — can be shared with the hiring team
+- **Recordings list page**: `https://domain/recordings` — queries Firestore for all recording metadata for this Firebase instance and displays a list (date, question types, participants, provider)
+- Each entry links to the playback URL
+- The page loads the video via the provider's embed player and the workspace JSON from Firebase Storage
 
-### 5.7 Google Drive Integration
+### 6.7 Storage (paid tier only)
 
-**FR-18 [P0]: Upload Flow**
-- After session ends, prompt interviewer with "Upload to Google Drive"
-- Google OAuth consent screen (scopes: `https://www.googleapis.com/auth/drive.file`)
-- Creates or finds a folder named "Live Interview Recordings"
-- Uploads two files:
-  - `interview-{roomId}-{date}.webm`
-  - `interview-{roomId}-{date}.json`
+On the paid tier, the workspace JSON recording is stored in the user's own Firebase Storage. Video/audio is handled by Zoom server-side recording (not stored by us).
+
+**FR-18 [P0]: Upload Flow (Workspace JSON)**
+- After session ends, the workspace JSON is automatically uploaded to the user's Firebase Storage bucket
+- Path: `recordings/{roomId}/{date}/workspace.json`
 - Shows upload progress bar
-- On completion: shows "Open in Drive" link + playback URL
+- Saves recording metadata to Firestore (roomId, date, question types, participants, Firebase Storage path, provider recording ID)
+- Shows playback URL
 
-**FR-19: File Structure in Drive**
-Files are organized in a single folder with the following naming convention:
+**FR-19: File Structure in Firebase Storage**
 ```
-Live Interview Recordings/
-├── interview-a1b2c3d4-2026-06-18.webm
-├── interview-a1b2c3d4-2026-06-18.json
-├── interview-e5f6g7h8-2026-06-19.webm
-└── interview-e5f6g7h8-2026-06-19.json
+recordings/
+├── a1b2c3d4/
+│   └── 2026-06-18/
+│       └── workspace.json
+└── e5f6g7h8/
+    └── 2026-06-19/
+        └── workspace.json
 ```
 
-**FR-20 [P0]: OAuth Implementation**
-- One-time OAuth flow (no session persistence since no accounts)
-- Token stored in memory only — user must re-auth if they refresh
-- Token used only for the upload operation
-- `drive.file` scope ensures only files created by the app are accessible
+**FR-20 [P0]: Firebase Auth**
+- Firebase Auth is configured as part of the user's Firebase project setup
+- The workspace JSON upload uses Firebase SDK authentication (no separate OAuth flow)
+- Security Rules restrict access to the bucket owner and authorized viewers
 
-### 5.8 Ad Integration
+### 6.8 Ad Integration
 
 **FR-21 [P1]: Banner Ads**
 - Non-intrusive banner during the call
@@ -351,7 +304,7 @@ Live Interview Recordings/
 - Ads NOT included in recording (not part of canvas or video capture)
 - Ad provider: TBD
 
-### 5.9 Error & Edge Cases
+### 6.9 Error & Edge Cases
 
 | Scenario | Expected Behavior |
 |----------|------------------|
@@ -376,15 +329,15 @@ Live Interview Recordings/
 
 ---
 
-## 6. Technical Considerations
+## 7. Technical Considerations
 
 ### Frontend
 
 - **Framework**: Next.js (App Router), TypeScript, Tailwind CSS
 - **Whiteboard engines**: Fabric.js (Basic), maxGraph/mxGraph (Diagrams), Excalidraw (freehand) — each a separate question type plugin
 - **Real-time sync**: CRDT via Y.js with Firestore provider (y-firestore); each question gets its own Y.Doc
-- **Video/audio**: Native RTCPeerConnection (P2P WebRTC) with STUN; TURN support configurable for future
-- **Recording**: MediaRecorder API for video (.webm); question-type-specific event logger for workspace (.json)
+- **Video/audio**: Free tier — P2P WebRTC. Paid tier — pluggable video provider via the user's own account (e.g., Zoom SDK)
+- **Recording**: Paid tier only — provider server-side recording for video/audio; workspace JSON logged in browser and stored in Firebase Storage
 - **State management**: Zustand or React context for call/room state
 
 ### Backend / Real-Time Infrastructure
@@ -395,51 +348,50 @@ Live Interview Recordings/
 
 ### Storage & Auth
 
-- **No server-side file storage** — recordings upload directly from browser to Google Drive
-- **Auth**: Google OAuth 2.0 PKCE (drive.file scope); token stored in memory only
-- **Playback files** hosted on Google Drive; accessed via proxy URL
+- **Paid tier**: Workspace JSON stored in the user's Firebase Storage bucket. Video/audio recording handled by the connected provider (server-side).
+- **Auth**: Firebase OAuth for Firebase project setup. Provider OAuth (e.g., Zoom) for video account integration.
+- **Playback**: Workspace JSON fetched from Firebase Storage. Video embedded via the provider's player.
 
 ### Plugin Architecture
 
+- Video providers follow the same plugin pattern as question types: each provider defines its own SDK integration, OAuth flow, recording interface, and embed player
 - Each question type is a self-contained plugin defining: workspace UI, CRDT data model, recording event schema, and replay component
-- Core platform handles WebRTC, recording coordination, Drive upload, and ads (room lifecycle via Firebase)
+- Core platform handles video (P2P or provider), recording coordination, storage, and ads (room lifecycle via Firebase)
 
 ### Deployment
 
 - **Frontend**: Vercel (or Firebase Hosting)
 - **Backend**: Firebase (Firestore, no dedicated server)
 
-## 7. Playback URL & Sharing
+## 8. Playback URL & Sharing
 
 **Format:**
 ```
-https://domain/playback?video={driveVideoId}&workspace={driveWorkspaceId}
+https://domain/playback?provider={providerRecordingId}&workspace={firebaseStoragePath}
 ```
 
 **How it works:**
-- The playback URL contains Google Drive file IDs directly (no session token needed)
-- The page fetches video via a server-side proxy (to attach auth headers and bypass CORS) and workspace JSON via Drive API export
-- This URL can be shared with anyone (they'll need Google Drive access to the files)
+- The playback URL contains the video provider's recording ID and the Firebase Storage path to the workspace JSON
+- The page embeds the video via the provider's player (e.g., Zoom's embed player) and fetches the workspace JSON from Firebase Storage
+- This URL can be shared with the hiring team (they'll need access to the Firebase Storage file and the provider's recording)
+- **Recordings list page** at `https://domain/recordings` queries Firestore to display all uploaded recordings for this Firebase instance
 
 **Access Control:**
-- Files are private to the interviewer's Google Drive by default
-- Reviewer needs access to view — interviewer must share Drive files manually
+- Firestore rules and the video provider's own access controls handle permissions
 - (Future: Add auto-sharing to specific email)
 
 ---
 
-## 8. Monetization
+## 9. Monetization
 
-| Feature | Free (ad-supported) | Premium (future) |
-|---------|-------------------|-------------------|
-| Video/audio | ✅ | ✅ |
+| Feature | Free | Premium (paid) |
+|---------|------|----------------|
+| Video/audio | P2P WebRTC (2-3 participants) | Pluggable video provider via user's own account (e.g., Zoom SDK; up to 10 participants) |
 | Collaborative whiteboard | ✅ | ✅ |
-| Recording | ✅ (dual) | ✅ |
-| Google Drive upload | ✅ | ✅ |
+| Recording | ❌ Not available | ✅ Provider server-side recording + workspace JSON in Firebase Storage |
 | Ads | ✅ In-session banners | ❌ No ads |
-| Recording length | Unlimited | Unlimited |
+| Session length | Unlimited | Unlimited |
 | Whiteboard style | All three | All three |
-| TURN relay | ❌ | ✅ |
 | Custom branding | ❌ | ✅ |
 
 **Ad Placement:** Bottom banner, 60s rotation, non-intrusive
@@ -447,18 +399,18 @@ https://domain/playback?video={driveVideoId}&workspace={driveWorkspaceId}
 
 ---
 
-## 9. Roadmap
+## 10. Roadmap
 
 | Phase | Features | Status |
 |-------|----------|--------|
-| **MVP** | Room creation, question type picker (whiteboard only), P2P video/audio, collaborative whiteboard (all 3 modes), dual recording (A/V + workspace JSON), download recording, Google Drive upload, text chat, synchronized playback player, banner ads | Current focus |
-| **Phase 2** | Coding question type (in-browser code editor), playback seeking optimization, TURN server support, mobile browser polish | Next |
-| **Phase 3** | MCQ / quiz question type, scheduling / calendar, multi-level undo/redo, cursor presence, whiteboard export | Future |
+| **MVP** | Room creation, question type picker (whiteboard only), free tier (P2P video/audio, no recording), collaborative whiteboard (all 3 modes), text chat, banner ads | Current focus |
+| **Phase 2** | Paid tier: Zoom SDK integration, server-side recording, workspace JSON storage in Firebase Storage, synchronized playback player, recordings list page | Next |
+| **Phase 3** | Coding question type (in-browser code editor), mobile browser polish | Future |
 | **Phase 4** | More question types, panel interviews, ATS integrations, question templates, premium tier (no ads) | Future |
 
 ---
 
-## 10. Success Metrics
+## 11. Success Metrics
 
 | Metric | Target |
 |--------|--------|
@@ -474,7 +426,7 @@ https://domain/playback?video={driveVideoId}&workspace={driveWorkspaceId}
 
 ---
 
-## 11. Open Questions
+## 12. Open Questions
 
 - [ ] Ad provider / network selection
 - [ ] Google Drive API quota handling
@@ -489,7 +441,7 @@ https://domain/playback?video={driveVideoId}&workspace={driveWorkspaceId}
 
 ---
 
-## 12. Competitor Landscape
+## 13. Competitor Landscape
 
 | Tool | Free? | Question Types? | Workspace + Video Sync? | Drive Upload? |
 |------|-------|-----------------|--------------------------|---------------|
@@ -502,3 +454,11 @@ https://domain/playback?video={driveVideoId}&workspace={driveWorkspaceId}
 ---
 
 *This is a living document. Open a PR or issue for changes.*
+
+---
+
+## 14. General Notes / Points to Think About Later
+
+*(Points 1-3 on Zoom SDK, BYO accounts, and tiered pricing have been adopted into the main spec.)*
+
+- Video providers follow the same pluggable pattern as question types. Adding a new provider (e.g., Google Meet SDK, Microsoft Teams) means implementing a new provider plugin with its own OAuth, streaming, recording, and embed player — no core changes.
