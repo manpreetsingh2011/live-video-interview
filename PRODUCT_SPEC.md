@@ -12,7 +12,7 @@
 - **Core experience:** Real-time collaborative workspace (whiteboard, coding, etc.) + video/audio side by side.
 - **MVP question types:** Whiteboard (Basic), Whiteboard (Diagrams), Whiteboard (Excalidraw) — each a separate, independent type.
 - **Dual recording:** Video (participants + audio) + JSON (workspace interaction log with periodic snapshots), recorded in sync.
-- **Google Drive:** Both recordings upload to the interviewer's Drive — no proprietary storage.
+- **Recording:** Video handled server-side by the connected provider; workspace JSON persisted to Firebase Storage — no proprietary storage.
 - **Synchronized playback:** Custom in-browser player replays video and workspace replay together, letting reviewers see *how* a candidate reasoned step by step.
 - **Revenue:** Non-intrusive in-session banner ads.
 - **Future:** Coding, MCQ, and more question types as plugins.
@@ -52,7 +52,7 @@ Additional constraints:
   - Collaborative workspace (whiteboard) with candidate
   - Video/audio to communicate
   - Record the entire session (video + workspace interaction log)
-  - Upload recordings to Google Drive so the hiring team can review how the candidate reasoned
+  - Share playback links with the hiring team so they can review how the candidate reasoned
 - **Pain points**: Juggles Zoom + whiteboard tool + screen recording; reviewers miss the reasoning process
 - **Device**: Laptop, Chrome
 
@@ -130,7 +130,7 @@ The platform does not manage its own infrastructure. Every customer brings their
 - Name and role shown in participant list
 
 **FR-04 [P1]: Room State & Presence**
-- Interviewer capabilities: start/stop recording, end session, upload to Drive
+- Interviewer capabilities: start/stop recording, end session
 - Candidate capabilities: draw on whiteboard, control own camera/mic, use chat, leave room (self only)
 - Each controls their own camera/mic activation
 - UI shows: participant joined | participant left | participant role and camera/mic status
@@ -216,7 +216,7 @@ The recording system is only available on the paid tier. It captures two synchro
 - Each event and snapshot is tagged with its `questionId` to map it to the correct question
 - Timestamps are relative to session start (millisecond precision)
 - Each question's full state snapshotted every 60 seconds for efficient seeking during playback
-- Automatically uploaded to the user's Firebase Storage after session ends
+- Automatically persisted to Firebase Storage after session ends
 
 **FR-13 [P0]: Sync Mechanism**
 - Both recordings share the same time origin
@@ -275,7 +275,7 @@ On the paid tier, the workspace recording data is persisted from Firestore/Realt
 **FR-18 [P0]: Session Persistence Flow**
 - During the interview, workspace events, snapshots, chat messages, and tab switches flow through Firestore/Realtime Database in real-time
 - After the session ends, the platform serializes the session data from Firestore/Realtime Database and writes it to the user's Firebase Storage bucket
-- Path: `recordings/{roomId}/{date}/workspace.json`
+- Path: `recordings/{startDatetime}_{roomId}/workspace.json` (matches FR-19)
 - Shows progress indicator
 - Saves recording metadata to Firestore (roomId, date, question types, participants, Firebase Storage path, provider recording ID)
 - Shows playback URL
@@ -299,8 +299,9 @@ recordings/
 ### 6.8 Ad Integration
 
 **FR-21 [P1]: Banner Ads**
-- Non-intrusive banner during the call
-- Placement: narrow bottom bar (below controls, above canvas edge)
+- Non-intrusive banner during the call and on the playback page
+- In-call placement: narrow bottom bar (below controls, above canvas edge)
+- Playback page placement: narrow bottom bar below the player
 - Ads rotate every 60 seconds
 - Ads NOT included in recording (not part of canvas or video capture)
 - Ad provider: TBD
@@ -329,88 +330,34 @@ recordings/
 
 ---
 
-## 7. Technical Considerations
+## 7. Monetization
 
-### Frontend
+The platform does not charge users directly. Revenue comes from in-session banner ads (both tiers). Users only pay their connected video provider (e.g., Zoom) for recording and larger sessions.
 
-- **Framework**: Next.js (App Router), TypeScript, Tailwind CSS
-- **Whiteboard engines**: Fabric.js (Basic), maxGraph/mxGraph (Diagrams), Excalidraw (freehand) — each a separate question type plugin
-- **Real-time sync**: CRDT via Y.js with Firestore provider (y-firestore); each question gets its own Y.Doc
-- **Video/audio**: Free tier — P2P WebRTC. Paid tier — pluggable video provider via the user's own account (e.g., Zoom SDK)
-- **Recording**: Paid tier only — provider server-side recording for video/audio; workspace JSON logged in browser and stored in Firebase Storage
-- **State management**: Zustand or React context for call/room state
-
-### Backend / Real-Time Infrastructure
-
-- **Platform**: Firebase (Firestore) for room management, WebRTC signaling relay, Y.js CRDT relay, and chat relay
-- **No dedicated signaling server** — Firebase handles real-time sync and presence natively
-- **No persistent storage** beyond Firestore; rooms auto-destruct on inactivity
-
-### Storage & Auth
-
-- **Paid tier**: Workspace JSON stored in the user's Firebase Storage bucket. Video/audio recording handled by the connected provider (server-side).
-- **Auth**: Firebase OAuth for Firebase project setup. Provider OAuth (e.g., Zoom) for video account integration.
-- **Playback**: Workspace JSON fetched from Firebase Storage. Video embedded via the provider's player.
-
-### Plugin Architecture
-
-- Video providers follow the same plugin pattern as question types: each provider defines its own SDK integration, OAuth flow, recording interface, and embed player
-- Each question type is a self-contained plugin defining: workspace UI, CRDT data model, recording event schema, and replay component
-- Core platform handles video (P2P or provider), recording coordination, storage, and ads (room lifecycle via Firebase)
-
-### Deployment
-
-- **Frontend**: Vercel (or Firebase Hosting)
-- **Backend**: Firebase (Firestore, no dedicated server)
-
-## 8. Playback URL & Sharing
-
-**Format:**
-```
-https://domain/playback?provider={providerRecordingId}&workspace={firebaseStoragePath}
-```
-
-**How it works:**
-- The playback URL contains the video provider's recording ID and the Firebase Storage path to the workspace JSON
-- The page embeds the video via the provider's player (e.g., Zoom's embed player) and fetches the workspace JSON from Firebase Storage
-- This URL can be shared with the hiring team (they'll need access to the Firebase Storage file and the provider's recording)
-- **Recordings list page** at `https://domain/recordings` queries Firestore to display all uploaded recordings for this Firebase instance
-
-**Access Control:**
-- Firestore rules and the video provider's own access controls handle permissions
-- (Future: Add auto-sharing to specific email)
-
----
-
-## 9. Monetization
-
-| Feature | Free | Premium (paid) |
-|---------|------|----------------|
+| Feature | Free | Premium (with provider) |
+|---------|------|--------------------------|
 | Video/audio | P2P WebRTC (2-3 participants) | Pluggable video provider via user's own account (e.g., Zoom SDK; up to 10 participants) |
 | Collaborative whiteboard | ✅ | ✅ |
 | Recording | ❌ Not available | ✅ Provider server-side recording + workspace JSON in Firebase Storage |
-| Ads | ✅ In-session banners | ❌ No ads |
 | Session length | Unlimited | Unlimited |
 | Whiteboard style | All three | All three |
 | Custom branding | ❌ | ✅ |
-
-**Ad Placement:** Bottom banner, 60s rotation, non-intrusive
-**Ad Network:** TBD (AdSense, Carbon, or direct)
+| Platform payment | None | None (user pays provider directly) |
+| Provider payment | None | User's own provider account (e.g., Zoom subscription) |
 
 ---
 
-## 10. Roadmap
+## 8. Roadmap
 
 | Phase | Features | Status |
 |-------|----------|--------|
-| **MVP** | Room creation, question type picker (whiteboard only), free tier (P2P video/audio, no recording), collaborative whiteboard (all 3 modes), text chat, banner ads | Current focus |
-| **Phase 2** | Paid tier: Zoom SDK integration, server-side recording, workspace JSON storage in Firebase Storage, synchronized playback player, recordings list page | Next |
+| **MVP** | Free tier (P2P WebRTC, no recording) + paid tier (provider SDK integration, server-side recording, workspace JSON in Firebase Storage, synchronized playback player, recordings list page). Room creation, question type picker (whiteboard only), collaborative whiteboard (all 3 modes), text chat, banner ads | Current focus |
 | **Phase 3** | Coding question type (in-browser code editor), mobile browser polish | Future |
-| **Phase 4** | More question types, panel interviews, ATS integrations, question templates, premium tier (no ads) | Future |
+| **Phase 4** | More question types, panel interviews, ATS integrations, question templates | Future |
 
 ---
 
-## 11. Success Metrics
+## 9. Success Metrics
 
 | Metric | Target |
 |--------|--------|
@@ -418,7 +365,7 @@ https://domain/playback?provider={providerRecordingId}&workspace={firebaseStorag
 | P2P connection success rate | >85% (no TURN) |
 | Whiteboard sync latency (p95) | <200ms |
 | Recording start success rate | >95% |
-| Recording → Drive upload completion | >90% |
+| Recording → Storage persistence completion | >90% |
 | Playback load success rate | >95% |
 | Completed interview rate (session >20 min) | >70% |
 | Candidate join rate | >85% |
@@ -426,39 +373,28 @@ https://domain/playback?provider={providerRecordingId}&workspace={firebaseStorag
 
 ---
 
-## 12. Open Questions
+## 10. Open Questions
 
 - [ ] Ad provider / network selection
-- [ ] Google Drive API quota handling
-- [ ] Browser support for `MediaRecorder` with specific codecs
-- [ ] Playback: Drive file accessibility (CORS / proxy needed?)
+- [ ] What happens when the customer's Firebase project hits free-tier Firestore/Storage limits mid-session?
+- [ ] Should picking "Interviewer" role require any lightweight gate (e.g., cookie, 4-digit code shared with room) to prevent candidate confusion?
 - [ ] Privacy policy & terms of service
-- [ ] Rate limiting for room creation
-- [ ] Analytics/tracking (privacy-first)
-- [ ] Platform name & branding
-- [ ] Custom domain support
-- [ ] Should playback page also be ad-supported?
+- [ ] Analytics/tracking approach (privacy-first)
+
+> **Note:** Video providers follow the same pluggable pattern as question types. Adding a new provider (e.g., Google Meet SDK, Microsoft Teams) means implementing a new provider plugin with its own OAuth, streaming, recording, and embed player — no core changes.
 
 ---
 
-## 13. Competitor Landscape
+## 11. Competitor Landscape
 
-| Tool | Free? | Question Types? | Workspace + Video Sync? | Drive Upload? |
-|------|-------|-----------------|--------------------------|---------------|
-| Google Meet + Jamboard | ✅ | Whiteboard only | ❌ No sync | ✅ |
-| Zoom + Miro | ⚠️ Limited | Whiteboard only | ❌ No sync | ❌ |
-| CoderPad | ❌ Paid | Coding, whiteboard | ❌ No sync | ❌ |
-| CodeInterview | ✅ Limited | Coding, whiteboard | ❌ No sync | ❌ |
-| **Ours** | **✅ Full** | **Pluggable (whiteboard MVP, more later)** | **✅ Synchronized dual recording** | **✅** |
+| Tool | Free? | Question Types? | Workspace + Video Sync? | Recording Storage? |
+|------|-------|-----------------|--------------------------|-------------------|
+| Google Meet + Jamboard | ✅ | Whiteboard only | ❌ No sync | Google Drive |
+| Zoom + Miro | ⚠️ Limited | Whiteboard only | ❌ No sync | Zoom Cloud |
+| CoderPad | ❌ Paid | Coding, whiteboard | ❌ No sync | CoderPad Cloud |
+| CodeInterview | ✅ Limited | Coding, whiteboard | ❌ No sync | CodeInterview Cloud |
+| **Ours** | **✅ Full** | **Pluggable (whiteboard MVP, more later)** | **✅ Synchronized dual recording** | **Provider Cloud + Firebase Storage** |
 
 ---
 
 *This is a living document. Open a PR or issue for changes.*
-
----
-
-## 14. General Notes / Points to Think About Later
-
-*(Points 1-3 on Zoom SDK, BYO accounts, and tiered pricing have been adopted into the main spec.)*
-
-- Video providers follow the same pluggable pattern as question types. Adding a new provider (e.g., Google Meet SDK, Microsoft Teams) means implementing a new provider plugin with its own OAuth, streaming, recording, and embed player — no core changes.
