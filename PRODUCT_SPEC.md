@@ -270,30 +270,31 @@ The recording system is only available on the paid tier. It captures two synchro
 
 ### 6.7 Storage (paid tier only)
 
-On the paid tier, the workspace JSON recording is stored in the user's own Firebase Storage. Video/audio is handled by Zoom server-side recording (not stored by us).
+On the paid tier, the workspace recording data is persisted from Firestore/Realtime Database to Firebase Storage for long-term archival. Video/audio is handled by the connected provider (server-side).
 
-**FR-18 [P0]: Upload Flow (Workspace JSON)**
-- After session ends, the workspace JSON is automatically uploaded to the user's Firebase Storage bucket
+**FR-18 [P0]: Session Persistence Flow**
+- During the interview, workspace events, snapshots, chat messages, and tab switches flow through Firestore/Realtime Database in real-time
+- After the session ends, the platform serializes the session data from Firestore/Realtime Database and writes it to the user's Firebase Storage bucket
 - Path: `recordings/{roomId}/{date}/workspace.json`
-- Shows upload progress bar
+- Shows progress indicator
 - Saves recording metadata to Firestore (roomId, date, question types, participants, Firebase Storage path, provider recording ID)
 - Shows playback URL
 
 **FR-19: File Structure in Firebase Storage**
 ```
 recordings/
-├── a1b2c3d4/
-│   └── 2026-06-18/
-│       └── workspace.json
-└── e5f6g7h8/
-    └── 2026-06-19/
-        └── workspace.json
+├── 2026-06-18_10-00-00_a1b2c3d4/
+│   └── workspace.json
+└── 2026-06-19_14-30-00_e5f6g7h8/
+    └── workspace.json
 ```
+- Directory name: `{startDatetime}_{roomId}` — datetime prefix enables easy sorting, roomId ensures uniqueness
 
-**FR-20 [P0]: Firebase Auth**
-- Firebase Auth is configured as part of the user's Firebase project setup
-- The workspace JSON upload uses Firebase SDK authentication (no separate OAuth flow)
-- Security Rules restrict access to the bucket owner and authorized viewers
+**FR-20 [P0]: Storage Access Control**
+- The platform uses the Firebase project's service account or client SDK credentials (set up during initial OAuth) to persist session data from Firestore to Storage
+- Security Rules restrict write access to the platform's service account
+- Read access: anyone with the playback URL can read the workspace JSON (enables sharing with the hiring team without additional auth)
+- Optionally, Security Rules can be tightened to require Firebase Auth login for stricter access control
 
 ### 6.8 Ad Integration
 
@@ -310,21 +311,20 @@ recordings/
 |----------|------------------|
 | Camera/mic permission denied | Proceed without, show placeholder, allow enable later |
 | Unsupported browser | Show list of supported browsers (Chrome, Firefox, Safari, Edge) |
-| Network disconnection | Auto-reconnect WebSocket; video freezes then resumes |
-| WebSocket disconnects mid-drawing | Buffered changes are synced on reconnect |
+| Network disconnection | Firebase real-time sync auto-reconnects; video freezes then resumes |
+| Firestore sync disconnects mid-drawing | Buffered changes are synced on reconnect |
 | Both draw conflicting changes | CRDT resolves automatically |
-| Recording fails (codec) | Show error toast, suggest retry |
+| Recording fails (provider error) | Show error toast, suggest retry |
 | Large diagram with many shapes | Virtual rendering / LOD to keep performance smooth |
 | Candidate joins while interviewer already drawing | Send full state on join |
-| Google Drive upload fails | Show error toast + retry button + download fallback |
-| JSON recording file is corrupt | Use snapshots to reconstruct nearest valid state |
+| Firebase Storage persistence fails | Show error toast + retry button |
+| Workspace JSON recording is corrupt | Use snapshots to reconstruct nearest valid state |
 | Room link visited after session ended | Show "Session has ended" message with CTA to create new room |
-| Interviewer closes browser mid-recording | Recording lost (in-memory). Warn on tab close. |
+| Any participant's browser closes mid-recording | Recording continues for remaining participants (video via provider). Workspace events up to that point are preserved in Firestore. Room stays active until all participants leave or interviewer explicitly ends the session via the "End Session" button |
 | OAuth popup blocked by browser | Show instructions to allow pop-ups, offer manual fallback |
 | Room ID collision | Extremely unlikely with UUID. Collision check on creation; retry if collision |
-| Interviewer tab crashes (not close) mid-recording | Recording lost. Warn via `beforeunload` event |
-| Candidate's browser doesn't support VP8/Opus | Detect codec support via `MediaRecorder.isTypeSupported()`; fall back to default codec |
-| Auto-destruct timeout for empty rooms | Destroy room after 30 min of inactivity; warn participants before destruction |
+| Room empty (all participants left) | Destroy after 30 min. No notification needed — no one is in the room |
+| Room inactive (participants present, no activity for 30 min) | In-app warning 60s before destruction via system message overlay. Any interaction (draw, type, move mouse) resets the timer |
 | Both participants click record simultaneously | Only the interviewer has the record button (candidate cannot trigger recording) |
 
 ---
