@@ -1,8 +1,5 @@
 # Product Spec: Live Interview Platform
 
-> **Status**: Draft v2
-> **Last Updated**: 2026-06-18
-
 ---
 
 ## 1. Executive Summary
